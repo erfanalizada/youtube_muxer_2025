@@ -1,10 +1,9 @@
 name: youtube_muxer_2025
-description: A Flutter plugin to mux (merge) video and audio files into one video file, with specific support for YouTube downloads.
+description: A Flutter plugin to mux (merge) video and audio files into one video file, with specific support for YouTube downloads. Supports downloading and combining high-quality video and audio streams.
 version: 0.0.1
 homepage: https://github.com/erfanalizada/youtube_muxer_2025
 repository: https://github.com/erfanalizada/youtube_muxer_2025
 issue_tracker: https://github.com/erfanalizada/youtube_muxer_2025/issues
-documentation: https://github.com/erfanalizada/youtube_muxer_2025/wiki
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -19,7 +18,6 @@ dependencies:
   device_info_plus: ^10.1.0
   youtube_explode_dart: ^2.4.0
   video_player: ^2.7.2
-  
 
 dev_dependencies:
   flutter_test:
@@ -33,10 +31,8 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.example.youtube_muxer_2025
+        package: com.erfanalizada.youtube_muxer_2025
         pluginClass: YoutubeMuxer2025Plugin
-  assets:
-    - test/resources/
 
 # Optional: If you use custom fonts
 # fonts:
