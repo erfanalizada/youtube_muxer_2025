@@ -1,0 +1,5 @@
+dependencies:
+  flutter:
+    sdk: flutter
+  youtube_muxer_2025:
+    path: ../youtube_muxer_2025  # Local path to your package
