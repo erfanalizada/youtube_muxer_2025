@@ -29,7 +29,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.example.youtube_muxer_2025  # Make sure this matches your actual package structure
+        package: com.example.youtube_muxer_2025
         pluginClass: YoutubeMuxer2025Plugin
 
 # Optional: If you use custom fonts
