@@ -11,7 +11,7 @@ A Flutter plugin to mux (merge) video and audio files into one video file.
 ## Installation
 ```yaml
 dependencies:
-  youtube_muxer_2025: ^0.0.5
+  youtube_muxer_2025: ^0.0.6
 ```
 
 ## Usage
