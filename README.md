@@ -53,7 +53,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  youtube_muxer_2025: ^0.0.8
+  youtube_muxer_2025: ^0.0.9
   video_player: ^2.7.2
   permission_handler: ^11.0.1
   device_info_plus: ^10.1.0
@@ -116,6 +116,14 @@ Add these permissions to your `android/app/src/main/AndroidManifest.xml`:
 <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
 ```
+
+### ⚠️ Crucial Manifest Configuration
+
+It is **essential** to add the following configuration to your Android manifest to prevent build errors:
+
+![Manifest Configuration](https://raw.githubusercontent.com/erfanalizada/youtube_muxer_2025/main/Manifest-Config.png)
+
+Without this configuration, the app will fail to build properly. Make sure to include `tools:replace="android:label"` in your manifest as shown in the image above.
 
 ## 📱 Complete Example Explained
 

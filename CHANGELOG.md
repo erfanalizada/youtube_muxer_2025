@@ -1,3 +1,11 @@
+## 0.0.9
+
+* Added crucial Android manifest configuration documentation
+* Added manifest configuration image reference
+* Enhanced documentation with YouTube terms of service warnings
+* Improved README with clearer usage instructions
+* Added proper error messages for manifest configuration issues
+
 ## 0.0.8
 
 * Added real-time download progress tracking
