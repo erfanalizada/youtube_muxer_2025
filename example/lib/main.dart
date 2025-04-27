@@ -1,7 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:youtube_muxer_2025/youtube_muxer_2025.dart';
-import 'package:video_player/video_player.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 void main() {
@@ -32,81 +30,26 @@ class YouTubeDownloaderScreen extends StatefulWidget {
 
 class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
   final _urlController = TextEditingController();
-  final _downloader = YoutubeDownloader(); // ✅ Create instance of YoutubeDownloader
+  final _downloader = YoutubeDownloader();
   List<VideoQuality> _qualities = [];
   bool _isLoading = false;
   String _status = '';
   double _progress = 0.0;
-  VideoPlayerController? _videoController;
-  bool _isPlaying = false;
+  String? _downloadedPath;
 
   @override
   void initState() {
     super.initState();
-    _requestPermissions();
+    _checkPermissions();
   }
 
-  Future<void> _requestPermissions() async {
-    // Storage permission (for Android < 13)
-    if (await Permission.storage.isDenied) {
-      final status = await Permission.storage.request();
-      debugPrint('Storage permission status: $status');
+  Future<void> _checkPermissions() async {
+    if (await Permission.storage.request().isGranted) {
+      // Permission granted
     }
-    
-    // For Android 13 and above
-    if (await Permission.photos.isDenied) {
-      final status = await Permission.photos.request();
-      debugPrint('Photos permission status: $status');
-    }
-    if (await Permission.videos.isDenied) {
-      final status = await Permission.videos.request();
-      debugPrint('Videos permission status: $status');
-    }
-    
-    // For iOS
-    if (await Permission.mediaLibrary.isDenied) {
-      final status = await Permission.mediaLibrary.request();
-      debugPrint('Media Library permission status: $status');
-    }
-
-    // Log final permission states
-    final permissions = await Future.wait([
-      Permission.storage.status,
-      Permission.photos.status,
-      Permission.videos.status,
-      Permission.mediaLibrary.status,
-    ]);
-
-    debugPrint('''
-=== Permission Status ===
-Storage: ${permissions[0]}
-Photos: ${permissions[1]}
-Videos: ${permissions[2]}
-Media Library: ${permissions[3]}
-=====================
-''');
-  }
-
-  @override
-  void dispose() {
-    _urlController.dispose();
-    _videoController?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _initializeVideo(String path) async {
-    _videoController?.dispose();
-    _videoController = VideoPlayerController.file(File(path));
-    
-    await _videoController!.initialize();
-    setState(() {
-      _isPlaying = true;
-      _videoController!.play();
-    });
   }
 
   Future<void> _getQualities() async {
-    debugPrint('Starting _getQualities()'); // Add this debug print
     if (_urlController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a YouTube URL')),
@@ -117,49 +60,26 @@ Media Library: ${permissions[3]}
     setState(() {
       _isLoading = true;
       _status = 'Fetching qualities...';
-      _qualities = [];  // Clear previous qualities
+      _qualities = [];
     });
 
     try {
-      debugPrint('Attempting to fetch qualities for: ${_urlController.text}');
       final qualities = await _downloader.getQualities(_urlController.text);
-      
-      if (!mounted) return;
-      
       setState(() {
         _qualities = qualities;
-        _status = 'Found ${qualities.length} qualities';
+        _status = 'Select quality to download';
       });
-      
-      debugPrint('Successfully fetched ${qualities.length} qualities');
     } catch (e) {
-      debugPrint('Error in _getQualities: $e');
-      
-      if (!mounted) return;
-      
       setState(() => _status = 'Error: $e');
-      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to fetch video: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        ),
+        SnackBar(content: Text('Failed to get qualities: $e')),
       );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      setState(() => _isLoading = false);
     }
   }
 
   Future<void> _downloadVideo(VideoQuality quality) async {
-    setState(() {
-      _isLoading = true;
-      _progress = 0.0;
-      _status = 'Starting download...';
-    });
-
     try {
       await for (final progress in _downloader.downloadVideo(
         quality, 
@@ -172,9 +92,14 @@ Media Library: ${permissions[3]}
           _status = progress.status;
         });
 
-        // If download completed and we have the output path
         if (progress.progress == 1.0 && progress.outputPath != null) {
-          await _initializeVideo(progress.outputPath!);
+          setState(() => _downloadedPath = progress.outputPath);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Download complete!\nSaved to: ${progress.outputPath}'),
+              duration: const Duration(seconds: 5),
+            ),
+          );
         }
       }
     } catch (e) {
@@ -186,97 +111,69 @@ Media Library: ${permissions[3]}
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('YouTube Downloader')),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                controller: _urlController,
-                decoration: const InputDecoration(
-                  labelText: 'YouTube URL',
-                  border: OutlineInputBorder(),
-                ),
+      appBar: AppBar(
+        title: const Text('YouTube Downloader'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _urlController,
+              decoration: const InputDecoration(
+                labelText: 'YouTube URL',
+                hintText: 'Enter YouTube video URL',
               ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _getQualities,
-                child: const Text('Get Qualities'),
-              ),
-              if (_isLoading) ...[
-                const SizedBox(height: 12),
-                LinearProgressIndicator(value: _progress),
-                const SizedBox(height: 8),
-                Text(_status, textAlign: TextAlign.center),
-              ],
-              if (_videoController != null && _videoController!.value.isInitialized) ...[
-                const SizedBox(height: 20),
-                AspectRatio(
-                  aspectRatio: _videoController!.value.aspectRatio,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      VideoPlayer(_videoController!),
-                      IconButton(
-                        icon: Icon(
-                          _isPlaying ? Icons.pause : Icons.play_arrow,
-                          size: 50.0,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _isPlaying = !_isPlaying;
-                            _isPlaying 
-                              ? _videoController!.play()
-                              : _videoController!.pause();
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                VideoProgressIndicator(
-                  _videoController!,
-                  allowScrubbing: true,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                ),
-              ],
-              const SizedBox(height: 20),
-              if (_qualities.isNotEmpty)
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _isLoading ? null : _getQualities,
+              child: Text(_isLoading ? 'Loading...' : 'Get Qualities'),
+            ),
+            const SizedBox(height: 16),
+            if (_qualities.isNotEmpty) ...[
+              Text('Available Qualities:'),
+              Expanded(
+                child: ListView.builder(
                   itemCount: _qualities.length,
                   itemBuilder: (context, index) {
                     final quality = _qualities[index];
-                    return Card(
-                      child: ListTile(
-                        title: Text('${quality.quality} (${(quality.size / 1024 / 1024).toStringAsFixed(2)} MB)'),
-                        subtitle: Text('Codec: ${quality.codec}'),
-                        trailing: ElevatedButton(
-                          onPressed: _isLoading ? null : () => _downloadVideo(quality),
-                          child: const Text('Download'),
-                        ),
-                      ),
+                    return ListTile(
+                      title: Text(quality.quality),
+                      subtitle: Text('Size: ${(quality.size / 1024 / 1024).toStringAsFixed(2)} MB'),
+                      onTap: () => _downloadVideo(quality),
                     );
                   },
                 ),
+              ),
             ],
-          ),
+            if (_progress > 0) ...[
+              const SizedBox(height: 16),
+              LinearProgressIndicator(value: _progress),
+              Text('Progress: ${(_progress * 100).toStringAsFixed(1)}%'),
+              Text('Status: $_status'),
+            ],
+            if (_downloadedPath != null) ...[
+              const SizedBox(height: 16),
+              Text('Last downloaded file:', style: Theme.of(context).textTheme.titleSmall),
+              Text(_downloadedPath!, style: const TextStyle(fontFamily: 'monospace')),
+            ],
+          ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
   }
 }
