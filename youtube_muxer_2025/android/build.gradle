@@ -1,4 +1,4 @@
-group = "com.example.youtube_muxer_2025"
+group = "com.example.youtube_muxer_2025"  // Make sure this matches
 version = "1.0-SNAPSHOT"
 
 buildscript {
