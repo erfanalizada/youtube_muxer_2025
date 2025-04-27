@@ -25,7 +25,7 @@ apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
 android {
-    namespace = "your.organization.youtube_muxer"  // Change from com.example
+    namespace = "com.example.youtube_muxer_2025"  // Change from com.example
     compileSdk = 34  // Update to latest stable
 
     compileOptions {
