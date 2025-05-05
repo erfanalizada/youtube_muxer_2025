@@ -21,7 +21,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   video_player: ^2.9.5
   youtube_explode_dart: ^2.4.0
-  permission_handler: ^11.4.0
+  permission_handler: ^12.0.0+1
 
 dev_dependencies:
   integration_test:
