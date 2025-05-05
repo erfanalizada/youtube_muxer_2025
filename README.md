@@ -2,6 +2,13 @@
 
 A powerful Flutter plugin for downloading and muxing YouTube videos with various quality options.
 
+
+# ☕ Support
+
+If you find this package helpful, consider supporting my work:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%23FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/erfan1)
+
 [![Pub Version](https://img.shields.io/pub/v/youtube_muxer_2025.svg)](https://pub.dev/packages/youtube_muxer_2025)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -53,7 +60,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  youtube_muxer_2025: ^0.1.0
+  youtube_muxer_2025: ^0.1.1
   video_player: ^2.7.2
   permission_handler: ^12.0.0+1
   device_info_plus: ^11.4.0

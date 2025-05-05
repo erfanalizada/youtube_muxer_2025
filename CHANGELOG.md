@@ -1,3 +1,10 @@
+
+## 0.1.1
+
+* Updated Readme
+
+
+
 ## 0.1.0
 
 * Updated dependencies to latest versions
