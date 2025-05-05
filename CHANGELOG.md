@@ -1,3 +1,11 @@
+## 0.1.0
+
+* Updated dependencies to latest versions
+* Updated permission_handler to ^12.0.0+1
+* Updated device_info_plus to ^11.4.0
+* Improved compatibility with latest Flutter and Dart SDKs
+* Fixed minor bugs and improved stability
+
 ## 0.0.9
 
 * Added crucial Android manifest configuration documentation

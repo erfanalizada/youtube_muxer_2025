@@ -1,7 +1,14 @@
 name: youtube_muxer_test_app
+description: Test app for youtube_muxer_2025 package
+
+environment:
+  sdk: '^3.7.0'
+  flutter: ">=3.3.0"
+
 dependencies:
   flutter:
     sdk: flutter
   youtube_muxer_2025:
     path: ../  # Local path to your package
+
 
