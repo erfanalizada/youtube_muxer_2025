@@ -14,7 +14,7 @@ void main() {
 
     testWidgets('Full download and mux process', (tester) async {
       const testUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
-      
+
       // Test getting qualities
       final qualities = await downloader.getQualities(testUrl);
       expect(qualities.isNotEmpty, true);
@@ -24,7 +24,8 @@ void main() {
       int progressUpdates = 0;
       String? finalPath;
 
-      await for (final progress in downloader.downloadVideo(firstQuality, testUrl)) {
+      await for (final progress
+          in downloader.downloadVideo(firstQuality, testUrl)) {
         progressUpdates++;
         if (progress.progress == 1.0) {
           finalPath = progress.outputPath;

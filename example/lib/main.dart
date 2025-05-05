@@ -13,9 +13,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'YouTube Muxer 2025 Example',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue),
       home: const YouTubeDownloaderScreen(),
     );
   }
@@ -25,7 +23,8 @@ class YouTubeDownloaderScreen extends StatefulWidget {
   const YouTubeDownloaderScreen({super.key});
 
   @override
-  State<YouTubeDownloaderScreen> createState() => _YouTubeDownloaderScreenState();
+  State<YouTubeDownloaderScreen> createState() =>
+      _YouTubeDownloaderScreenState();
 }
 
 class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
@@ -51,6 +50,7 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
 
   Future<void> _getQualities() async {
     if (_urlController.text.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a YouTube URL')),
       );
@@ -65,38 +65,45 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
 
     try {
       final qualities = await _downloader.getQualities(_urlController.text);
+      if (!mounted) return;
       setState(() {
         _qualities = qualities;
         _status = 'Select quality to download';
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _status = 'Error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to get qualities: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to get qualities: $e')));
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _downloadVideo(VideoQuality quality) async {
     try {
       await for (final progress in _downloader.downloadVideo(
-        quality, 
+        quality,
         _urlController.text,
       )) {
         if (!mounted) return;
-        
+
         setState(() {
           _progress = progress.progress;
           _status = progress.status;
         });
 
         if (progress.progress == 1.0 && progress.outputPath != null) {
+          if (!mounted) return;
           setState(() => _downloadedPath = progress.outputPath);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Download complete!\nSaved to: ${progress.outputPath}'),
+              content: Text(
+                'Download complete!\nSaved to: ${progress.outputPath}',
+              ),
               duration: const Duration(seconds: 5),
             ),
           );
@@ -117,9 +124,7 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('YouTube Downloader'),
-      ),
+      appBar: AppBar(title: const Text('YouTube Downloader')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -139,7 +144,7 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
             ),
             const SizedBox(height: 16),
             if (_qualities.isNotEmpty) ...[
-              Text('Available Qualities:'),
+              const Text('Available Qualities:'),
               Expanded(
                 child: ListView.builder(
                   itemCount: _qualities.length,
@@ -147,7 +152,9 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
                     final quality = _qualities[index];
                     return ListTile(
                       title: Text(quality.quality),
-                      subtitle: Text('Size: ${(quality.size / 1024 / 1024).toStringAsFixed(2)} MB'),
+                      subtitle: Text(
+                        'Size: ${(quality.size / 1024 / 1024).toStringAsFixed(2)} MB',
+                      ),
                       onTap: () => _downloadVideo(quality),
                     );
                   },
@@ -162,8 +169,14 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
             ],
             if (_downloadedPath != null) ...[
               const SizedBox(height: 16),
-              Text('Last downloaded file:', style: Theme.of(context).textTheme.titleSmall),
-              Text(_downloadedPath!, style: const TextStyle(fontFamily: 'monospace')),
+              Text(
+                'Last downloaded file:',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              Text(
+                _downloadedPath!,
+                style: const TextStyle(fontFamily: 'monospace'),
+              ),
             ],
           ],
         ),

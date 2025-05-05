@@ -1,7 +1,7 @@
 class DownloadResult {
-  final String filePath;  // Final path where file is saved
-  final String title;     // Video title or custom name
-  final bool success;     // True if download succeeded
+  final String filePath; // Final path where file is saved
+  final String title; // Video title or custom name
+  final bool success; // True if download succeeded
 
   DownloadResult({
     required this.filePath,

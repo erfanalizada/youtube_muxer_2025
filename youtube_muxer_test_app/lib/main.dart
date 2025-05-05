@@ -17,6 +17,8 @@ class MyApp extends StatelessWidget {
 }
 
 class DownloaderTestScreen extends StatefulWidget {
+  const DownloaderTestScreen({super.key});
+
   @override
   State<DownloaderTestScreen> createState() => _DownloaderTestScreenState();
 }
@@ -83,6 +85,7 @@ class _DownloaderTestScreenState extends State<DownloaderTestScreen> {
       });
     } catch (e) {
       setState(() => _status = 'Error: $e');
+      if (!mounted) return; // Add mounted check
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
@@ -95,12 +98,15 @@ class _DownloaderTestScreenState extends State<DownloaderTestScreen> {
         quality,
         _urlController.text,
       )) {
+        if (!mounted) return; // Add this check
+
         setState(() {
           _progress = progress.progress;
           _status = progress.status;
         });
 
         if (progress.progress == 1.0 && progress.outputPath != null) {
+          if (!mounted) return; // Add this check
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Download complete: ${progress.outputPath}'),
@@ -110,6 +116,7 @@ class _DownloaderTestScreenState extends State<DownloaderTestScreen> {
         }
       }
     } catch (e) {
+      if (!mounted) return; // Add this check
       setState(() => _status = 'Error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Download failed: $e')),
