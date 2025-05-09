@@ -10,9 +10,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: DownloaderTestScreen(),
-    );
+    return MaterialApp(home: DownloaderTestScreen());
   }
 }
 
@@ -86,9 +84,9 @@ class _DownloaderTestScreenState extends State<DownloaderTestScreen> {
     } catch (e) {
       setState(() => _status = 'Error: $e');
       if (!mounted) return; // Add mounted check
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -118,9 +116,9 @@ class _DownloaderTestScreenState extends State<DownloaderTestScreen> {
     } catch (e) {
       if (!mounted) return; // Add this check
       setState(() => _status = 'Error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Download failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Download failed: $e')));
     }
   }
 }

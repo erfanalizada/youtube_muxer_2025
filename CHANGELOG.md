@@ -1,4 +1,9 @@
 
+## 0.1.2
+
+* Adjusted pub yaml
+* flutter format fixed.
+
 ## 0.1.1
 
 * Updated Readme

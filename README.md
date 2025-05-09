@@ -60,7 +60,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  youtube_muxer_2025: ^0.1.1
+  youtube_muxer_2025: ^0.1.2
   video_player: ^2.7.2
   permission_handler: ^12.0.0+1
   device_info_plus: ^11.4.0
