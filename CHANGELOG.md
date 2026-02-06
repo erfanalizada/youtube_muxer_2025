@@ -1,4 +1,12 @@
 
+## 0.1.3
+
+* Replaced youtube_explode_dart with NewPipe Extractor for reliable YouTube extraction
+* All YouTube extraction now runs natively on Android via Kotlin
+* Real-time download progress tracking via EventChannel (no more fake progress)
+* Removed dependency on youtube_explode_dart and path_provider
+* Requires JitPack repository in consuming app's build.gradle
+
 ## 0.1.2
 
 * Adjusted pub yaml

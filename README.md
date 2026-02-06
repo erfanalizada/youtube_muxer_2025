@@ -40,13 +40,16 @@ This package is provided "as is" without any guarantees regarding compliance wit
 - 📥 Download YouTube videos in various qualities
 - 🔄 Mux (merge) video and audio streams using Native Android MediaMuxer
 - 📱 Platform-specific permission handling
-- 📊 Real-time download progress tracking
+- 📊 Real-time download progress tracking with granular updates
 - 🔒 Secure downloading with proper error handling
 - 📂 Returns final video file path for further processing
+- 🔧 Uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor) for reliable YouTube extraction on native Android
 
 ## 🎬 How It Works
 
-The plugin downloads and processes YouTube videos, returning the final video file path for you to handle as needed. Perfect for:
+The plugin uses **NewPipe Extractor** on the native Android side to extract video/audio stream URLs from YouTube, downloads them with real progress tracking via OkHttp, and muxes them together using Android's native **MediaMuxer**. The Dart side is a thin method-channel client — all heavy lifting happens natively.
+
+Perfect for:
 - Saving videos to device storage
 - Processing with your own video player
 - Integrating with other media handling systems
@@ -60,10 +63,36 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  youtube_muxer_2025: ^0.1.2
+  youtube_muxer_2025: ^0.1.3
   video_player: ^2.7.2
   permission_handler: ^12.0.0+1
   device_info_plus: ^11.4.0
+```
+
+### Android Setup — JitPack Repository
+
+This plugin uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor) which is hosted on JitPack. You **must** add the JitPack repository to your app's `android/build.gradle` (Groovy) or `android/build.gradle.kts` (Kotlin DSL):
+
+**Groovy** (`android/build.gradle`):
+```groovy
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }  // Required for youtube_muxer_2025
+    }
+}
+```
+
+**Kotlin DSL** (`android/build.gradle.kts`):
+```kotlin
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }  // Required for youtube_muxer_2025
+    }
+}
 ```
 
 ## 🚀 Getting Started
@@ -369,16 +398,6 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
    - Provides error information through the download stream
    - Example shows proper error handling and user feedback implementation
 
-### 🔧 Key Features
-
-- 📥 Download YouTube videos in various qualities
-- 🔄 Mux (merge) video and audio streams using Native Android MediaMuxer
-- 📱 Platform-specific permission handling
-- 📊 Real-time download progress tracking
-- 🔒 Secure downloading with proper error handling
-- 📂 Returns final video file path for further processing
-
-
 ## 🔧 Advanced Usage
 
 ### Quality Selection
@@ -387,23 +406,29 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
 // Get all available qualities
 final qualities = await downloader.getQualities(videoUrl);
 
-// Filter qualities
-final hdQualities = qualities.where((q) => 
-  q.height >= 720 && q.codec == 'h264'
+// Filter for HD qualities
+final hdQualities = qualities.where((q) =>
+  int.parse(q.quality.replaceAll(RegExp(r'[^0-9]'), '')) >= 720
 ).toList();
 ```
 
 ## 📊 Progress Tracking
 
-The download progress provides detailed information:
+The download progress provides detailed, real-time information streamed from the native side:
 
 ```dart
 class DownloadProgress {
   final double progress;     // 0.0 to 1.0
   final String status;      // Current status message
   final String? outputPath; // Final video path when complete
+  final String? title;      // Video title
 }
 ```
+
+Progress phases:
+- **0% — 45%**: Downloading video stream
+- **45% — 85%**: Downloading audio stream
+- **85% — 100%**: Muxing video + audio into final MP4
 
 ## 🤝 Contributing
 
