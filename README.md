@@ -58,15 +58,15 @@ The plugin uses **NewPipe Extractor** on the native Android side to extract vide
                         downloadStreams()
                        /                \
               [Thread: video]      [Thread: audio]
-              /   |   ...  \       /   |   ...  \
-          chunk1 chunk2 ... chunk8  chunk1 ... chunk8
+              /   |   ...   \       /   |   ...   \
+          chunk1 chunk2 ... chunkN  chunk1 ... chunkN
             |      |          |       |           |
-          (8 parallel HTTP connections per file)
+          (up to 16 parallel HTTP connections per file)
 ```
 
-- **8 parallel connections** per file using HTTP Range headers
+- **Up to 16 parallel connections** per file using HTTP Range headers (scales by file size)
 - **512 KB buffers** per connection for efficient I/O
-- **OkHttp** with 32-connection pool, HTTP/1.1 forced for separate TCP per connection
+- **OkHttp** with 40-connection pool, HTTP/1.1 forced for separate TCP per connection
 - **Progress throttled** to 150ms intervals to avoid flooding Flutter
 - **Graceful fallback** to single buffered connection if Range not supported or file < 1 MB
 
@@ -84,7 +84,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  youtube_muxer_2025: ^0.2.1
+  youtube_muxer_2025: ^0.3.0
   video_player: ^2.7.2
   permission_handler: ^12.0.0+1
   device_info_plus: ^11.4.0

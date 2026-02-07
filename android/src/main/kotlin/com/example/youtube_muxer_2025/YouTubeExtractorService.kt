@@ -13,6 +13,7 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -26,9 +27,6 @@ class YouTubeExtractorService {
         private const val TAG = "YouTubeExtractorService"
         private var initialized = false
 
-        /** Number of parallel connections per file download */
-        private const val CHUNK_COUNT = 8
-
         /** Read/write buffer size per thread */
         private const val BUFFER_SIZE = 512 * 1024 // 512 KB
 
@@ -37,6 +35,16 @@ class YouTubeExtractorService {
 
         /** Files smaller than this won't be chunked */
         private const val MIN_CHUNK_SIZE = 1L * 1024 * 1024 // 1 MB
+
+        /** Bytes downloaded before updating the shared progress counter */
+        private const val PROGRESS_BATCH_BYTES = 1L * 1024 * 1024 // 1 MB
+
+        /** Scale chunk count by file size */
+        private fun chunkCountFor(fileSize: Long): Int = when {
+            fileSize >= 50L * 1024 * 1024 -> 16  // 50 MB+ → 16 connections
+            fileSize >= 10L * 1024 * 1024 -> 12  // 10 MB+ → 12 connections
+            else -> 8
+        }
 
         fun ensureInitialized() {
             if (!initialized) {
@@ -48,7 +56,7 @@ class YouTubeExtractorService {
 
     // Tuned for maximum parallel throughput
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectionPool(ConnectionPool(32, 5, TimeUnit.MINUTES))
+        .connectionPool(ConnectionPool(40, 5, TimeUnit.MINUTES))
         .protocols(listOf(Protocol.HTTP_1_1)) // separate TCP connections per request
         .readTimeout(120, TimeUnit.SECONDS)
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -56,7 +64,7 @@ class YouTubeExtractorService {
         .build()
 
     // Thread pool for chunk downloads (video + audio chunks share this pool)
-    private val chunkPool: ExecutorService = Executors.newFixedThreadPool(20)
+    private val chunkPool: ExecutorService = Executors.newFixedThreadPool(34)
 
     // ──────────────────────────────────────────────────────────────────
     //  Public API
@@ -233,8 +241,9 @@ class YouTubeExtractorService {
 
     /**
      * Downloads [url] to [outputPath] using multi-connection chunked
-     * downloading when the server supports Range requests, falling back
-     * to a single fast-buffered connection otherwise.
+     * downloading.  YouTube CDN always supports Range, so we skip the
+     * probe and attempt chunked directly, falling back to single-
+     * connection only if the first chunk gets a non-206 response.
      */
     private fun downloadFileChunked(
         url: String,
@@ -247,32 +256,40 @@ class YouTubeExtractorService {
 
         val contentLength = resolveContentLength(url, expectedSize)
 
-        if (contentLength > MIN_CHUNK_SIZE && supportsRangeRequests(url)) {
-            downloadChunked(url, outputFile, contentLength, progressCallback)
-        } else {
-            downloadSingle(url, outputFile, contentLength, progressCallback)
+        if (contentLength > MIN_CHUNK_SIZE) {
+            try {
+                downloadChunked(url, outputFile, contentLength, progressCallback)
+                return
+            } catch (e: RangeFallbackException) {
+                Log.d(TAG, "Range not supported, falling back to single connection")
+            }
         }
+        downloadSingle(url, outputFile, contentLength, progressCallback)
     }
 
-    /** Multi-connection chunked download using Range headers. */
+    /** Thrown when the server returns 200 instead of 206, signalling no Range support. */
+    private class RangeFallbackException : Exception()
+
+    /** Multi-connection chunked download using Range headers and FileChannel. */
     private fun downloadChunked(
         url: String,
         outputFile: File,
         contentLength: Long,
         progressCallback: (Long, Long) -> Unit
     ) {
-        val chunkSize = contentLength / CHUNK_COUNT
+        val chunkCount = chunkCountFor(contentLength)
+        val chunkSize = contentLength / chunkCount
         val downloadedBytes = AtomicLong(0)
 
         // Pre-allocate the output file
         RandomAccessFile(outputFile, "rw").use { it.setLength(contentLength) }
 
-        val latch = CountDownLatch(CHUNK_COUNT)
+        val latch = CountDownLatch(chunkCount)
         val firstError = AtomicReference<Exception?>(null)
 
-        for (i in 0 until CHUNK_COUNT) {
+        for (i in 0 until chunkCount) {
             val start = i * chunkSize
-            val end = if (i == CHUNK_COUNT - 1) contentLength - 1 else (start + chunkSize - 1)
+            val end = if (i == chunkCount - 1) contentLength - 1 else (start + chunkSize - 1)
 
             chunkPool.submit {
                 try {
@@ -284,27 +301,49 @@ class YouTubeExtractorService {
                         .build()
 
                     val response = httpClient.newCall(request).execute()
+
+                    // If the server ignores Range and returns 200, signal fallback
+                    if (response.code == 200) {
+                        response.close()
+                        throw RangeFallbackException()
+                    }
                     if (!response.isSuccessful && response.code != 206) {
                         throw Exception("Chunk $i failed: HTTP ${response.code}")
                     }
 
                     val body = response.body ?: throw Exception("Empty body for chunk $i")
                     val buffer = ByteArray(BUFFER_SIZE)
+                    val byteBuffer = ByteBuffer.wrap(buffer)
+                    var localBytes = 0L
 
                     body.byteStream().use { input ->
                         RandomAccessFile(outputFile, "rw").use { raf ->
-                            raf.seek(start)
+                            val channel = raf.channel
                             var pos = start
                             while (pos <= end) {
                                 val bytesRead = input.read(buffer)
                                 if (bytesRead == -1) break
-                                raf.write(buffer, 0, bytesRead)
+                                byteBuffer.clear()
+                                byteBuffer.limit(bytesRead)
+                                channel.write(byteBuffer, pos)
                                 pos += bytesRead
-                                downloadedBytes.addAndGet(bytesRead.toLong())
-                                progressCallback(downloadedBytes.get(), contentLength)
+                                localBytes += bytesRead
+                                // Batch progress: only update shared counter every PROGRESS_BATCH_BYTES
+                                if (localBytes >= PROGRESS_BATCH_BYTES) {
+                                    downloadedBytes.addAndGet(localBytes)
+                                    localBytes = 0L
+                                    progressCallback(downloadedBytes.get(), contentLength)
+                                }
                             }
                         }
                     }
+                    // Flush remaining local bytes
+                    if (localBytes > 0) {
+                        downloadedBytes.addAndGet(localBytes)
+                        progressCallback(downloadedBytes.get(), contentLength)
+                    }
+                } catch (e: RangeFallbackException) {
+                    firstError.compareAndSet(null, e)
                 } catch (e: Exception) {
                     firstError.compareAndSet(null, e)
                 } finally {
@@ -315,7 +354,7 @@ class YouTubeExtractorService {
 
         latch.await()
         firstError.get()?.let { throw it }
-        Log.d(TAG, "Chunked download done: ${downloadedBytes.get()} bytes → ${outputFile.path}")
+        Log.d(TAG, "Chunked download done: ${downloadedBytes.get()} bytes (${chunkCount} chunks) → ${outputFile.path}")
     }
 
     /** Single-connection fallback with large buffered I/O. */
@@ -369,15 +408,4 @@ class YouTubeExtractorService {
         }
     }
 
-    private fun supportsRangeRequests(url: String): Boolean {
-        return try {
-            val request = Request.Builder()
-                .url(url)
-                .header("Range", "bytes=0-0")
-                .build()
-            httpClient.newCall(request).execute().use { it.code == 206 }
-        } catch (e: Exception) {
-            false
-        }
-    }
 }

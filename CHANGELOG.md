@@ -1,4 +1,12 @@
 
+## 0.3.0
+
+* Dynamic chunk count: 16 connections for 50 MB+ files, 12 for 10 MB+, 8 for smaller files
+* Eliminated Range probe request — saves ~200-400ms latency per download (YouTube CDN always supports Range; falls back gracefully if not)
+* FileChannel positional writes instead of RandomAccessFile seek+write for better concurrent I/O
+* Batched progress updates (1 MB intervals per thread) to reduce atomic contention across threads
+* Connection pool increased to 40, thread pool to 34 to support higher parallelism
+
 ## 0.2.1
 
 * Fixed plugin manifest that incorrectly shipped a launcher activity and example app manifests, causing duplicate launcher icons and manifest merge conflicts in consumer apps
