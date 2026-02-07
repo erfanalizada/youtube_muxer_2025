@@ -1,4 +1,14 @@
 
+## 0.2.0
+
+* Multi-connection chunked downloading (8 parallel connections per file) for maximum speed
+* Video and audio streams now download simultaneously in parallel
+* 512KB I/O buffers (up from 8KB) with BufferedOutputStream fallback
+* OkHttp tuned with 32-connection pool, HTTP/1.1 forced for separate TCP per connection
+* Progress callbacks throttled to 150ms to reduce Flutter overhead
+* Automatic Range request detection with graceful single-connection fallback
+* Updated README with download architecture documentation
+
 ## 0.1.3
 
 * Replaced youtube_explode_dart with NewPipe Extractor for reliable YouTube extraction
