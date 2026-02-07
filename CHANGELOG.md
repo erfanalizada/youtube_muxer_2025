@@ -1,4 +1,10 @@
 
+## 0.2.1
+
+* Fixed plugin manifest that incorrectly shipped a launcher activity and example app manifests, causing duplicate launcher icons and manifest merge conflicts in consumer apps
+* Removed stray `android/app/` directory from the plugin package
+* Cleaned plugin `AndroidManifest.xml` to only declare INTERNET permission — no more `tools:replace="android:label"` workaround needed
+
 ## 0.2.0
 
 * Multi-connection chunked downloading (8 parallel connections per file) for maximum speed

@@ -84,7 +84,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  youtube_muxer_2025: ^0.2.0
+  youtube_muxer_2025: ^0.2.1
   video_player: ^2.7.2
   permission_handler: ^12.0.0+1
   device_info_plus: ^11.4.0
@@ -174,13 +174,9 @@ Add these permissions to your `android/app/src/main/AndroidManifest.xml`:
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
 ```
 
-### Crucial Manifest Configuration
+### Manifest Note
 
-It is **essential** to add the following configuration to your Android manifest to prevent build errors:
-
-![Manifest Configuration](https://raw.githubusercontent.com/erfanalizada/youtube_muxer_2025/main/Manifest-Config.png)
-
-Without this configuration, the app will fail to build properly. Make sure to include `tools:replace="android:label"` in your manifest as shown in the image above.
+As of v0.2.1, this plugin ships a clean minimal manifest. You should **not** need any `tools:replace` or `tools:node="remove"` workarounds. If you previously added those for older versions, they can be safely removed.
 
 ## Complete Example
 
