@@ -87,6 +87,7 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                 }
 
                 executor.execute {
+                    val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
                     try {
                         val tempDir = context.cacheDir.absolutePath
                         val title = extractorService.getVideoTitle(url)
@@ -100,7 +101,6 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                         val (tempVideoPath, tempAudioPath) = extractorService.downloadStreams(
                             url, quality, tempDir
                         ) { progress, status ->
-                            val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
                             mainHandler.post {
                                 eventSink?.success(mapOf(
                                     "progress" to progress,
@@ -111,7 +111,6 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                         }
 
                         // Mux (85% - 100%)
-                        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
                         mainHandler.post {
                             eventSink?.success(mapOf(
                                 "progress" to 0.85,

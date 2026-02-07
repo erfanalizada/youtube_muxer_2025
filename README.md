@@ -1,9 +1,9 @@
-# YouTube Muxer 2025 🎥
+# YouTube Muxer 2025
 
 A powerful Flutter plugin for downloading and muxing YouTube videos with various quality options.
 
 
-# ☕ Support
+# Support
 
 If you find this package helpful, consider supporting my work:
 
@@ -12,7 +12,7 @@ If you find this package helpful, consider supporting my work:
 [![Pub Version](https://img.shields.io/pub/v/youtube_muxer_2025.svg)](https://pub.dev/packages/youtube_muxer_2025)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## ⚠️ Important Notice
+## Important Notice
 
 ### YouTube Terms of Service & Copyright
 
@@ -35,19 +35,40 @@ Users are responsible for ensuring their use of this package complies with YouTu
 
 This package is provided "as is" without any guarantees regarding compliance with YouTube's terms of service or other legal requirements.
 
-## 🌟 Features
+## Features
 
-- 📥 Download YouTube videos in various qualities
-- 🔄 Mux (merge) video and audio streams using Native Android MediaMuxer
-- 📱 Platform-specific permission handling
-- 📊 Real-time download progress tracking with granular updates
-- 🔒 Secure downloading with proper error handling
-- 📂 Returns final video file path for further processing
-- 🔧 Uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor) for reliable YouTube extraction on native Android
+- Download YouTube videos in various qualities
+- **Multi-connection chunked downloading** (8 parallel connections per file) for maximum speed
+- **Parallel video + audio downloads** — both streams download simultaneously
+- Mux (merge) video and audio streams using Native Android MediaMuxer
+- Platform-specific permission handling
+- Real-time download progress tracking with throttled updates
+- Secure downloading with proper error handling
+- Returns final video file path for further processing
+- Uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor) for reliable YouTube extraction on native Android
+- Automatic fallback to single-connection download when Range requests are not supported
 
-## 🎬 How It Works
+## How It Works
 
-The plugin uses **NewPipe Extractor** on the native Android side to extract video/audio stream URLs from YouTube, downloads them with real progress tracking via OkHttp, and muxes them together using Android's native **MediaMuxer**. The Dart side is a thin method-channel client — all heavy lifting happens natively.
+The plugin uses **NewPipe Extractor** on the native Android side to extract video/audio stream URLs from YouTube. Downloads are accelerated using **multi-connection chunked downloading** — each file is split into 8 chunks downloaded in parallel via HTTP Range headers, bypassing per-connection throttling. Video and audio streams download simultaneously on dedicated threads. Once both are complete, they are muxed together using Android's native **MediaMuxer**. The Dart side is a thin method-channel client — all heavy lifting happens natively.
+
+### Download Architecture
+
+```
+                        downloadStreams()
+                       /                \
+              [Thread: video]      [Thread: audio]
+              /   |   ...  \       /   |   ...  \
+          chunk1 chunk2 ... chunk8  chunk1 ... chunk8
+            |      |          |       |           |
+          (8 parallel HTTP connections per file)
+```
+
+- **8 parallel connections** per file using HTTP Range headers
+- **512 KB buffers** per connection for efficient I/O
+- **OkHttp** with 32-connection pool, HTTP/1.1 forced for separate TCP per connection
+- **Progress throttled** to 150ms intervals to avoid flooding Flutter
+- **Graceful fallback** to single buffered connection if Range not supported or file < 1 MB
 
 Perfect for:
 - Saving videos to device storage
@@ -57,13 +78,13 @@ Perfect for:
 - Mp4 players
 
 
-## 📦 Installation
+## Installation
 
 Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  youtube_muxer_2025: ^0.1.3
+  youtube_muxer_2025: ^0.2.0
   video_player: ^2.7.2
   permission_handler: ^12.0.0+1
   device_info_plus: ^11.4.0
@@ -95,7 +116,7 @@ allprojects {
 }
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Basic Usage
 
@@ -112,7 +133,7 @@ final qualities = await downloader.getQualities('VIDEO_URL');
 await for (final progress in downloader.downloadVideo(quality, 'VIDEO_URL')) {
   print('Progress: ${progress.progress * 100}%');
   print('Status: ${progress.status}');
-  
+
   if (progress.outputPath != null) {
     print('Downloaded to: ${progress.outputPath}');
   }
@@ -131,13 +152,13 @@ if (permission.isGranted) {
 }
 ```
 
-## 📱 Platform Support
+## Platform Support
 
 | Android | iOS | macOS | Web | Linux | Windows |
 |---------|-----|-------|-----|--------|---------|
-| ✅      | 🚧  | ❌    | ❌  | ❌     | ❌      |
+| Yes     | WIP | No    | No  | No     | No      |
 
-## 📋 Required Permissions
+## Required Permissions
 
 ### Android
 
@@ -153,7 +174,7 @@ Add these permissions to your `android/app/src/main/AndroidManifest.xml`:
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
 ```
 
-### ⚠️ Crucial Manifest Configuration
+### Crucial Manifest Configuration
 
 It is **essential** to add the following configuration to your Android manifest to prevent build errors:
 
@@ -161,7 +182,7 @@ It is **essential** to add the following configuration to your Android manifest 
 
 Without this configuration, the app will fail to build properly. Make sure to include `tools:replace="android:label"` in your manifest as shown in the image above.
 
-## 📱 Complete Example Explained
+## Complete Example
 
 Here's a complete example showing how to implement a YouTube downloader interface:
 
@@ -252,11 +273,11 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
   Future<void> _downloadVideo(VideoQuality quality) async {
     try {
       await for (final progress in _downloader.downloadVideo(
-        quality, 
+        quality,
         _urlController.text,
       )) {
         if (!mounted) return;
-        
+
         setState(() {
           _progress = progress.progress;
           _status = progress.status;
@@ -304,14 +325,14 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // Get qualities button
             ElevatedButton(
               onPressed: _isLoading ? null : _getQualities,
               child: Text(_isLoading ? 'Loading...' : 'Get Qualities'),
             ),
             const SizedBox(height: 16),
-            
+
             // Quality selection list
             if (_qualities.isNotEmpty) ...[
               Text('Available Qualities:'),
@@ -329,7 +350,7 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
                 ),
               ),
             ],
-            
+
             // Progress indicators
             if (_progress > 0) ...[
               const SizedBox(height: 16),
@@ -337,13 +358,13 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
               Text('Progress: ${(_progress * 100).toStringAsFixed(1)}%'),
               Text('Status: $_status'),
             ],
-            
+
             // Downloaded file path
             if (_downloadedPath != null) ...[
               const SizedBox(height: 16),
-              Text('Last downloaded file:', 
+              Text('Last downloaded file:',
                    style: Theme.of(context).textTheme.titleSmall),
-              Text(_downloadedPath!, 
+              Text(_downloadedPath!,
                    style: const TextStyle(fontFamily: 'monospace')),
             ],
           ],
@@ -360,7 +381,7 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
 }
 ```
 
-### 🔍 Code Breakdown
+### Code Breakdown
 
 1. **Setup & Initialization**
    - Creates a basic Flutter app with Material design
@@ -398,7 +419,7 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
    - Provides error information through the download stream
    - Example shows proper error handling and user feedback implementation
 
-## 🔧 Advanced Usage
+## Advanced Usage
 
 ### Quality Selection
 
@@ -412,7 +433,7 @@ final hdQualities = qualities.where((q) =>
 ).toList();
 ```
 
-## 📊 Progress Tracking
+## Progress Tracking
 
 The download progress provides detailed, real-time information streamed from the native side:
 
@@ -426,11 +447,10 @@ class DownloadProgress {
 ```
 
 Progress phases:
-- **0% — 45%**: Downloading video stream
-- **45% — 85%**: Downloading audio stream
-- **85% — 100%**: Muxing video + audio into final MP4
+- **0% - 85%**: Downloading video + audio streams (in parallel)
+- **85% - 100%**: Muxing video + audio into final MP4
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Here's how you can help:
 
@@ -440,23 +460,19 @@ Contributions are welcome! Here's how you can help:
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🐛 Bug Reports and Feature Requests
+## Bug Reports and Feature Requests
 
 Please use the [GitHub Issues](https://github.com/erfanalizada/youtube_muxer_2025/issues) page to report any bugs or file feature requests.
 
-## ⭐ Show Your Support
+## Show Your Support
 
 If you find this project helpful, please give it a star on GitHub! It helps the project grow and improve.
 
-## 📧 Contact
+## Contact
 
 Email: erfanalizada6@gmail.com
 Project Link: [https://github.com/erfanalizada/youtube_muxer_2025](https://github.com/erfanalizada/youtube_muxer_2025)
-
----
-
-
