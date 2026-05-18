@@ -78,19 +78,28 @@ class YoutubeDownloader {
     try {
       final resultFuture = platform.invokeMethod('downloadAudio', {'url': videoUrl});
 
+      // If the native call fails, propagate the error into the stream so
+      // the await-for below doesn't hang waiting for events that never arrive.
+      resultFuture.then((_) {
+        if (!progressController.isClosed) progressController.close();
+      }, onError: (e) {
+        if (!progressController.isClosed) {
+          progressController.addError(e);
+          progressController.close();
+        }
+      });
+
       await for (final progress in progressController.stream) {
         yield progress;
         if (progress.progress >= 1.0) break;
       }
-
-      await resultFuture;
     } on PlatformException catch (e) {
       throw Exception('Audio download failed: ${e.message}');
     } catch (e) {
       throw Exception('Audio download failed: $e');
     } finally {
       await progressSubscription.cancel();
-      await progressController.close();
+      if (!progressController.isClosed) await progressController.close();
     }
   }
 
@@ -125,7 +134,6 @@ class YoutubeDownloader {
     });
 
     try {
-      // Start the download on native side
       final resultFuture = platform.invokeMethod(
         'downloadVideo',
         {
@@ -134,23 +142,28 @@ class YoutubeDownloader {
         },
       );
 
-      // Yield progress events as they come in
+      // If the native call fails, propagate the error into the stream so
+      // the await-for below doesn't hang waiting for events that never arrive.
+      resultFuture.then((_) {
+        if (!progressController.isClosed) progressController.close();
+      }, onError: (e) {
+        if (!progressController.isClosed) {
+          progressController.addError(e);
+          progressController.close();
+        }
+      });
+
       await for (final progress in progressController.stream) {
         yield progress;
-        if (progress.progress >= 1.0) {
-          break;
-        }
+        if (progress.progress >= 1.0) break;
       }
-
-      // Wait for the method call to complete
-      await resultFuture;
     } on PlatformException catch (e) {
       throw Exception('Download failed: ${e.message}');
     } catch (e) {
       throw Exception('Download failed: $e');
     } finally {
       await progressSubscription.cancel();
-      await progressController.close();
+      if (!progressController.isClosed) await progressController.close();
     }
   }
 }

@@ -152,16 +152,19 @@ class YouTubeExtractorService {
     /**
      * Downloads only the best-quality audio stream for [url].
      * Progress is reported in range 0.0–1.0.
+     * [onTitleKnown] fires synchronously once the video title is resolved (before download starts).
      * Returns the path to the downloaded audio file.
      */
     fun downloadAudio(
         url: String,
         tempDir: String,
+        onTitleKnown: ((String) -> Unit)? = null,
         progressCallback: (Double, String) -> Unit
     ): String {
         ensureInitialized()
 
         val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
+        onTitleKnown?.invoke(streamInfo.name ?: "video")
 
         val audioStream = streamInfo.audioStreams
             .filter { stream ->
@@ -192,16 +195,19 @@ class YouTubeExtractorService {
      * Downloads video + audio streams **in parallel**, each using multi-
      * connection chunked downloading.  Progress is reported as a combined
      * fraction (0.0 – 0.85, leaving 0.85 – 1.0 for muxing).
+     * [onTitleKnown] fires synchronously once the video title is resolved (before download starts).
      */
     fun downloadStreams(
         url: String,
         qualityLabel: String,
         tempDir: String,
+        onTitleKnown: ((String) -> Unit)? = null,
         progressCallback: (Double, String) -> Unit
     ): Pair<String, String> {
         ensureInitialized()
 
         val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
+        onTitleKnown?.invoke(streamInfo.name ?: "video")
 
         val videoStream = streamInfo.videoOnlyStreams
             .filter { stream ->

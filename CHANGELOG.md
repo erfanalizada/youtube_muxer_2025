@@ -1,4 +1,9 @@
 
+## 0.4.1
+
+* **Fix: download errors no longer hang** — if the native call fails, the error is now propagated into the progress stream immediately so `downloadVideo()` / `downloadAudio()` reject properly instead of waiting forever
+* **Perf: one fewer network round-trip** — title is now resolved inside `downloadStreams` / `downloadAudio` via an `onTitleKnown` callback, removing the separate `getVideoTitle()` call that fetched stream info twice
+
 ## 0.4.0
 
 * **New `downloadAudio(url)`** — downloads the best-quality MP4/M4A audio stream with full progress tracking. No quality selection needed; the native side auto-picks the highest-bitrate audio stream. Returns progress 0.0–1.0 and a final `.m4a` output path. Mirrors `downloadVideo()` but skips the mux step entirely.

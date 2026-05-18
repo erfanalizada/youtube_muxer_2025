@@ -90,16 +90,20 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                     val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
                     try {
                         val tempDir = context.cacheDir.absolutePath
-                        val title = extractorService.getVideoTitle(url)
-                        val safeTitle = extractorService.sanitizeFilename(title)
-
                         val documentsDir = File(context.filesDir, "downloads")
                         documentsDir.mkdirs()
-                        val outputPath = "${documentsDir.absolutePath}/$safeTitle.mp4"
 
-                        // Download streams with progress
+                        // Title and output path are resolved inside downloadStreams via onTitleKnown,
+                        // which fires synchronously after StreamInfo.getInfo() but before downloads start.
+                        var title = "video"
+                        var outputPath = "${documentsDir.absolutePath}/video.mp4"
+
                         val (tempVideoPath, tempAudioPath) = extractorService.downloadStreams(
-                            url, quality, tempDir
+                            url, quality, tempDir,
+                            onTitleKnown = { t ->
+                                title = t
+                                outputPath = "${documentsDir.absolutePath}/${extractorService.sanitizeFilename(t)}.mp4"
+                            }
                         ) { progress, status ->
                             mainHandler.post {
                                 eventSink?.success(mapOf(
@@ -167,14 +171,19 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                     val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
                     try {
                         val tempDir = context.cacheDir.absolutePath
-                        val title = extractorService.getVideoTitle(url)
-                        val safeTitle = extractorService.sanitizeFilename(title)
-
                         val outputDir = File(context.filesDir, "downloads")
                         outputDir.mkdirs()
-                        val outputPath = "${outputDir.absolutePath}/$safeTitle.m4a"
 
-                        val tempAudioPath = extractorService.downloadAudio(url, tempDir) { progress, status ->
+                        var title = "video"
+                        var outputPath = "${outputDir.absolutePath}/audio.m4a"
+
+                        val tempAudioPath = extractorService.downloadAudio(
+                            url, tempDir,
+                            onTitleKnown = { t ->
+                                title = t
+                                outputPath = "${outputDir.absolutePath}/${extractorService.sanitizeFilename(t)}.m4a"
+                            }
+                        ) { progress, status ->
                             mainHandler.post {
                                 eventSink?.success(mapOf(
                                     "progress" to progress,
