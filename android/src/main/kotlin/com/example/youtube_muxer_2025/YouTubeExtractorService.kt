@@ -209,14 +209,28 @@ class YouTubeExtractorService {
         val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
         onTitleKnown?.invoke(streamInfo.name ?: "video")
 
-        val videoStream = streamInfo.videoOnlyStreams
-            .filter { stream ->
-                stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-                stream.format != null &&
-                stream.format!!.mimeType.contains("video/mp4")
+        val videoStream = run {
+            val candidates = streamInfo.videoOnlyStreams
+                .filter { stream ->
+                    stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
+                    stream.format != null &&
+                    stream.format!!.mimeType.contains("video/mp4")
+                }
+            val targetRes = Regex("\\d+").find(qualityLabel)?.value?.toIntOrNull()
+            // 1. Exact label match
+            candidates.firstOrNull { it.resolution == qualityLabel }
+            // 2. Same resolution number — handles "720p" vs "720p60" label drift
+            ?: candidates.firstOrNull { s ->
+                Regex("\\d+").find(s.resolution ?: "")?.value?.toIntOrNull() == targetRes
             }
-            .firstOrNull { it.resolution == qualityLabel }
-            ?: throw Exception("Selected quality '$qualityLabel' no longer available")
+            // 3. Nearest available resolution as last resort
+            ?: candidates
+                .mapNotNull { s ->
+                    val n = Regex("\\d+").find(s.resolution ?: "")?.value?.toIntOrNull()
+                    if (n != null && targetRes != null) Pair(s, Math.abs(n - targetRes)) else null
+                }
+                .minByOrNull { it.second }?.first
+        } ?: throw Exception("No video stream available (requested: '$qualityLabel')")
 
         val audioStream = streamInfo.audioStreams
             .filter { stream ->

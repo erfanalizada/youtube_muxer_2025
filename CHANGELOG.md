@@ -1,4 +1,9 @@
 
+## 0.4.2
+
+* **Fix: quality label mismatch no longer fails download** — `downloadVideo()` now uses lenient resolution matching: tries exact label first, then same resolution number (handles `"720p"` vs `"720p60"` drift between two `StreamInfo.getInfo()` calls), then nearest available quality as last resort
+* **Integration tests** — all three methods (`getQualities`, `downloadAudio`, `downloadVideo`) verified end-to-end on a real device
+
 ## 0.4.1
 
 * **Fix: download errors no longer hang** — if the native call fails, the error is now propagated into the progress stream immediately so `downloadVideo()` / `downloadAudio()` reject properly instead of waiting forever
