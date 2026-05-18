@@ -1,4 +1,9 @@
 
+## 0.4.3
+
+* **Fix: `downloadAudio` no longer fails with "No compatible audio stream found"** — now prefers `audio/mp4` (AAC/M4A) but falls back to any progressive HTTP audio stream (e.g. `audio/webm`). Output extension is derived from the actual stream format.
+* **Fix: add `consumer-rules.pro`** — ProGuard/R8 keep rules for OkHttp, NewPipe Extractor, and plugin classes are now shipped with the plugin so release builds work without manual configuration.
+
 ## 0.4.2
 
 * **Fix: quality label mismatch no longer fails download** — `downloadVideo()` now uses lenient resolution matching: tries exact label first, then same resolution number (handles `"720p"` vs `"720p60"` drift between two `StreamInfo.getInfo()` calls), then nearest available quality as last resort

@@ -166,17 +166,25 @@ class YouTubeExtractorService {
         val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
         onTitleKnown?.invoke(streamInfo.name ?: "video")
 
-        val audioStream = streamInfo.audioStreams
+        val allAudioStreams = streamInfo.audioStreams
             .filter { stream ->
                 stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-                stream.format != null &&
-                stream.format!!.mimeType.contains("audio/mp4")
+                stream.format != null
             }
+        // Prefer AAC/MP4 for maximum compatibility; fall back to any progressive stream
+        val audioStream = allAudioStreams
+            .filter { it.format!!.mimeType.contains("audio/mp4") }
             .maxByOrNull { it.averageBitrate }
+            ?: allAudioStreams.maxByOrNull { it.averageBitrate }
             ?: throw Exception("No compatible audio stream found")
 
+        val audioExt = when {
+            audioStream.format!!.mimeType.contains("audio/mp4") -> "m4a"
+            audioStream.format!!.mimeType.contains("audio/webm") -> "webm"
+            else -> "m4a"
+        }
         val audioSize = audioStream.itagItem?.contentLength ?: -1L
-        val tempAudioPath = "$tempDir/temp_audio_dl.m4a"
+        val tempAudioPath = "$tempDir/temp_audio_dl.$audioExt"
         val lastProgressTime = AtomicLong(0)
 
         downloadFileChunked(audioStream.content, tempAudioPath, audioSize) { downloaded, total ->

@@ -181,6 +181,7 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                             url, tempDir,
                             onTitleKnown = { t ->
                                 title = t
+                                // Extension resolved after download (webm fallback); placeholder for now
                                 outputPath = "${outputDir.absolutePath}/${extractorService.sanitizeFilename(t)}.m4a"
                             }
                         ) { progress, status ->
@@ -192,6 +193,10 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                                 ))
                             }
                         }
+
+                        // Use the actual extension from the downloaded temp file (m4a or webm)
+                        val ext = tempAudioPath.substringAfterLast('.', "m4a")
+                        outputPath = outputPath.substringBeforeLast('.') + ".$ext"
 
                         File(tempAudioPath).copyTo(File(outputPath), overwrite = true)
                         try { File(tempAudioPath).delete() } catch (_: Exception) {}
