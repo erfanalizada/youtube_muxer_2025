@@ -37,14 +37,14 @@ This package is provided "as is" without any guarantees regarding compliance wit
 
 ## Features
 
-- Download YouTube videos in various qualities
-- **Multi-connection chunked downloading** (8 parallel connections per file) for maximum speed
+- **Download YouTube videos** in various qualities (H.264 MP4)
+- **Download audio-only** (`downloadAudio`) — best-quality M4A stream, no quality picker needed
+- `getQualities()` returns **both video and audio streams** — filter by `fps == 0` for audio
+- **Multi-connection chunked downloading** (up to 16 parallel connections per file) for maximum speed
 - **Parallel video + audio downloads** — both streams download simultaneously
 - Mux (merge) video and audio streams using Native Android MediaMuxer
-- Platform-specific permission handling
 - Real-time download progress tracking with throttled updates
-- Secure downloading with proper error handling
-- Returns final video file path for further processing
+- Returns final file path once download is complete
 - Uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor) for reliable YouTube extraction on native Android
 - Automatic fallback to single-connection download when Range requests are not supported
 
@@ -118,25 +118,47 @@ allprojects {
 
 ## Getting Started
 
-### Basic Usage
+### Download a video
 
 ```dart
 import 'package:youtube_muxer_2025/youtube_muxer_2025.dart';
 
-// Create an instance of YoutubeDownloader
 final downloader = YoutubeDownloader();
 
-// Get available qualities
+// Fetch available streams — video entries have fps > 0, audio entries have fps == 0
 final qualities = await downloader.getQualities('VIDEO_URL');
 
-// Download video
-await for (final progress in downloader.downloadVideo(quality, 'VIDEO_URL')) {
-  print('Progress: ${progress.progress * 100}%');
-  print('Status: ${progress.status}');
+// Pick a video quality
+final videoQualities = qualities.where((q) => q.fps > 0).toList();
+final selected = videoQualities.first;
 
-  if (progress.outputPath != null) {
-    print('Downloaded to: ${progress.outputPath}');
-  }
+await for (final progress in downloader.downloadVideo(selected, 'VIDEO_URL')) {
+  print('${(progress.progress * 100).toStringAsFixed(0)}% — ${progress.status}');
+  if (progress.outputPath != null) print('Saved to: ${progress.outputPath}');
+}
+```
+
+### Download audio only (MP3/M4A)
+
+```dart
+// No quality selection needed — native side auto-picks highest bitrate audio stream
+await for (final progress in downloader.downloadAudio('VIDEO_URL')) {
+  print('${(progress.progress * 100).toStringAsFixed(0)}% — ${progress.status}');
+  if (progress.outputPath != null) print('Audio saved to: ${progress.outputPath}');
+}
+```
+
+### Show audio info before downloading
+
+```dart
+// getQualities() now includes audio streams (fps == 0)
+final all = await downloader.getQualities('VIDEO_URL');
+final audioStreams = all.where((q) => q.fps == 0).toList()
+  ..sort((a, b) => b.bitrate.compareTo(a.bitrate));
+
+if (audioStreams.isNotEmpty) {
+  final best = audioStreams.first;
+  print('Best audio: ${best.bitrate ~/ 1000} kbps · ${(best.size / 1024 / 1024).toStringAsFixed(1)} MB');
 }
 ```
 
@@ -442,9 +464,12 @@ class DownloadProgress {
 }
 ```
 
-Progress phases:
+Progress phases for `downloadVideo`:
 - **0% - 85%**: Downloading video + audio streams (in parallel)
 - **85% - 100%**: Muxing video + audio into final MP4
+
+Progress phases for `downloadAudio`:
+- **0% - 100%**: Downloading audio stream directly (no mux step)
 
 ## Contributing
 

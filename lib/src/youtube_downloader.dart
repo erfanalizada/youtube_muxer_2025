@@ -49,6 +49,51 @@ class YoutubeDownloader {
     }
   }
 
+  /// Downloads the best available audio stream for [videoUrl].
+  ///
+  /// No quality selection needed — the native side always picks the
+  /// highest-bitrate MP4/M4A audio stream automatically.
+  ///
+  /// Returns a stream of [DownloadProgress] objects. The final event has
+  /// [DownloadProgress.outputPath] set to the saved `.m4a` file path.
+  Stream<DownloadProgress> downloadAudio(String videoUrl) async* {
+    final progressController = StreamController<DownloadProgress>();
+
+    StreamSubscription? progressSubscription;
+    progressSubscription = _progressChannel
+        .receiveBroadcastStream()
+        .listen((event) {
+      if (event is Map) {
+        final map = Map<String, dynamic>.from(event);
+        progressController.add(DownloadProgress(
+          progress: (map['progress'] as num).toDouble(),
+          status: map['status'] as String,
+          outputPath: map['outputPath'] as String?,
+          title: map['title'] as String?,
+          estimatedTimeRemaining: 0,
+        ));
+      }
+    });
+
+    try {
+      final resultFuture = platform.invokeMethod('downloadAudio', {'url': videoUrl});
+
+      await for (final progress in progressController.stream) {
+        yield progress;
+        if (progress.progress >= 1.0) break;
+      }
+
+      await resultFuture;
+    } on PlatformException catch (e) {
+      throw Exception('Audio download failed: ${e.message}');
+    } catch (e) {
+      throw Exception('Audio download failed: $e');
+    } finally {
+      await progressSubscription.cancel();
+      await progressController.close();
+    }
+  }
+
   /// Downloads a YouTube video in the specified quality.
   ///
   /// [quality] is the selected [models.VideoQuality] option from [getQualities].

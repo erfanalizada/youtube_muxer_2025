@@ -70,11 +70,17 @@ class YouTubeExtractorService {
     //  Public API
     // ──────────────────────────────────────────────────────────────────
 
+    /**
+     * Returns all available streams for a URL.
+     * Video streams have fps > 0; audio-only streams have fps == 0.
+     * The Flutter side uses fps to distinguish them.
+     */
     fun getQualities(url: String): List<Map<String, Any>> {
         ensureInitialized()
 
         val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
 
+        // ── Video streams (H.264 MP4 only) ──────────────────────────────
         val videoStreams = streamInfo.videoOnlyStreams
             .filter { stream ->
                 stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
@@ -84,23 +90,25 @@ class YouTubeExtractorService {
                  stream.codec?.contains("h264", ignoreCase = true) == true)
             }
 
-        val hasAudio = streamInfo.audioStreams.any { stream ->
-            stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-            stream.format != null &&
-            stream.format!!.mimeType.contains("audio/mp4")
-        }
+        // ── Audio streams (MP4/M4A) ──────────────────────────────────────
+        val audioStreams = streamInfo.audioStreams
+            .filter { stream ->
+                stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
+                stream.format != null &&
+                stream.format!!.mimeType.contains("audio/mp4")
+            }
 
-        if (!hasAudio) {
+        if (audioStreams.isEmpty()) {
             throw Exception("No compatible audio stream found for this video")
         }
 
         val seen = mutableSetOf<String>()
         val qualities = mutableListOf<Map<String, Any>>()
 
+        // Add video qualities
         for (stream in videoStreams) {
             val label = stream.resolution ?: continue
-            if (!seen.add(label)) continue
-
+            if (!seen.add("v_$label")) continue
             qualities.add(mapOf(
                 "quality" to label,
                 "url" to (stream.content ?: ""),
@@ -113,12 +121,71 @@ class YouTubeExtractorService {
             ))
         }
 
-        qualities.sortByDescending { map ->
-            val q = map["quality"] as String
-            q.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+        // Add audio qualities — fps = 0 distinguishes them from video
+        for (stream in audioStreams) {
+            val bitrateKbps = stream.averageBitrate / 1000
+            val label = "${bitrateKbps}kbps"
+            if (!seen.add("a_$label")) continue
+            qualities.add(mapOf(
+                "quality" to label,
+                "url" to (stream.content ?: ""),
+                "size" to (stream.itagItem?.contentLength ?: 0L),
+                "container" to "m4a",
+                "codec" to (stream.codec ?: "mp4a"),
+                "bitrate" to stream.averageBitrate,
+                "fps" to 0,
+                "title" to (streamInfo.name ?: "video")
+            ))
         }
 
+        // Sort: video by resolution desc, then audio by bitrate desc
+        qualities.sortWith(compareByDescending<Map<String, Any>> { (it["fps"] as Int) > 0 }
+            .thenByDescending { map ->
+                val fps = map["fps"] as Int
+                if (fps > 0) (map["quality"] as String).replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                else map["bitrate"] as Int
+            })
+
         return qualities
+    }
+
+    /**
+     * Downloads only the best-quality audio stream for [url].
+     * Progress is reported in range 0.0–1.0.
+     * Returns the path to the downloaded audio file.
+     */
+    fun downloadAudio(
+        url: String,
+        tempDir: String,
+        progressCallback: (Double, String) -> Unit
+    ): String {
+        ensureInitialized()
+
+        val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
+
+        val audioStream = streamInfo.audioStreams
+            .filter { stream ->
+                stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
+                stream.format != null &&
+                stream.format!!.mimeType.contains("audio/mp4")
+            }
+            .maxByOrNull { it.averageBitrate }
+            ?: throw Exception("No compatible audio stream found")
+
+        val audioSize = audioStream.itagItem?.contentLength ?: -1L
+        val tempAudioPath = "$tempDir/temp_audio_dl.m4a"
+        val lastProgressTime = AtomicLong(0)
+
+        downloadFileChunked(audioStream.content, tempAudioPath, audioSize) { downloaded, total ->
+            val now = System.currentTimeMillis()
+            if (now - lastProgressTime.get() >= PROGRESS_INTERVAL_MS) {
+                lastProgressTime.set(now)
+                val fraction = if (total > 0) (downloaded.toDouble() / total.toDouble()).coerceIn(0.0, 1.0) else 0.0
+                progressCallback(fraction, "Downloading audio...")
+            }
+        }
+
+        return tempAudioPath
     }
 
     /**

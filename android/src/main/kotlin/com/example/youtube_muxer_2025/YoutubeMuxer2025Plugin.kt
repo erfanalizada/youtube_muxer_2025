@@ -156,6 +156,62 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                 }
             }
 
+            "downloadAudio" -> {
+                val url = call.argument<String>("url")
+                if (url == null) {
+                    result.error("INVALID_ARGUMENTS", "Missing 'url' parameter", null)
+                    return
+                }
+
+                executor.execute {
+                    val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                    try {
+                        val tempDir = context.cacheDir.absolutePath
+                        val title = extractorService.getVideoTitle(url)
+                        val safeTitle = extractorService.sanitizeFilename(title)
+
+                        val outputDir = File(context.filesDir, "downloads")
+                        outputDir.mkdirs()
+                        val outputPath = "${outputDir.absolutePath}/$safeTitle.m4a"
+
+                        val tempAudioPath = extractorService.downloadAudio(url, tempDir) { progress, status ->
+                            mainHandler.post {
+                                eventSink?.success(mapOf(
+                                    "progress" to progress,
+                                    "status" to status,
+                                    "title" to title
+                                ))
+                            }
+                        }
+
+                        File(tempAudioPath).copyTo(File(outputPath), overwrite = true)
+                        try { File(tempAudioPath).delete() } catch (_: Exception) {}
+
+                        mainHandler.post {
+                            eventSink?.success(mapOf(
+                                "progress" to 1.0,
+                                "status" to "Download completed",
+                                "outputPath" to outputPath,
+                                "title" to title
+                            ))
+                        }
+
+                        mainHandler.post {
+                            result.success(mapOf(
+                                "success" to true,
+                                "outputPath" to outputPath,
+                                "title" to title
+                            ))
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "downloadAudio failed", e)
+                        mainHandler.post {
+                            result.error("DOWNLOAD_ERROR", e.message ?: "Unknown error", null)
+                        }
+                    }
+                }
+            }
+
             else -> result.notImplemented()
         }
     }

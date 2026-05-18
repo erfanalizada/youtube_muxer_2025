@@ -1,4 +1,9 @@
 
+## 0.4.0
+
+* **New `downloadAudio(url)`** — downloads the best-quality MP4/M4A audio stream with full progress tracking. No quality selection needed; the native side auto-picks the highest-bitrate audio stream. Returns progress 0.0–1.0 and a final `.m4a` output path. Mirrors `downloadVideo()` but skips the mux step entirely.
+* **`getQualities()` now returns audio streams** — audio-only entries have `fps = 0`, video entries remain unchanged. Callers can filter by `fps` to distinguish them and show audio info (bitrate, size) before downloading.
+
 ## 0.3.0
 
 * Dynamic chunk count: 16 connections for 50 MB+ files, 12 for 10 MB+, 8 for smaller files
