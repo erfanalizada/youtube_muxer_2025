@@ -1,4 +1,8 @@
 
+## 0.4.4
+
+* **Fix: "unable to resolve www.youtube.com" on first download** — The plugin now pre-warms the network immediately on attach (app startup): it initializes NewPipe and resolves `www.youtube.com` in the background so the Android DNS cache is hot by the time the user triggers a download. A single automatic retry (2 s delay) is kept as a safety net for any edge cases where the pre-warm loses a race.
+
 ## 0.4.3
 
 * **Fix: `downloadAudio` no longer fails with "No compatible audio stream found"** — now prefers `audio/mp4` (AAC/M4A) but falls back to any progressive HTTP audio stream (e.g. `audio/webm`). Output extension is derived from the actual stream format.

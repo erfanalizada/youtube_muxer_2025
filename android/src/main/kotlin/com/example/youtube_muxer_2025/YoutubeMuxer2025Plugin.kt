@@ -9,6 +9,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import java.io.File
+import java.net.InetAddress
 import java.util.concurrent.Executors
 
 class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
@@ -38,6 +39,18 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                 eventSink = null
             }
         })
+
+        // Pre-warm: initialize NewPipe + resolve YouTube DNS at startup so the
+        // first user-initiated download never hits a cold-DNS failure.
+        executor.execute {
+            try {
+                YouTubeExtractorService.ensureInitialized()
+                InetAddress.getAllByName("www.youtube.com")
+                Log.d(TAG, "Network pre-warm: DNS resolved")
+            } catch (e: Exception) {
+                Log.d(TAG, "Network pre-warm: ${e.message}")
+            }
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {

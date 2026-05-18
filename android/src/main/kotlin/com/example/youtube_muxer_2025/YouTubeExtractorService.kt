@@ -78,7 +78,7 @@ class YouTubeExtractorService {
     fun getQualities(url: String): List<Map<String, Any>> {
         ensureInitialized()
 
-        val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
+        val streamInfo = getStreamInfoWithRetry(url)
 
         // ── Video streams (H.264 MP4 only) ──────────────────────────────
         val videoStreams = streamInfo.videoOnlyStreams
@@ -163,7 +163,7 @@ class YouTubeExtractorService {
     ): String {
         ensureInitialized()
 
-        val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
+        val streamInfo = getStreamInfoWithRetry(url)
         onTitleKnown?.invoke(streamInfo.name ?: "video")
 
         val allAudioStreams = streamInfo.audioStreams
@@ -214,7 +214,7 @@ class YouTubeExtractorService {
     ): Pair<String, String> {
         ensureInitialized()
 
-        val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
+        val streamInfo = getStreamInfoWithRetry(url)
         onTitleKnown?.invoke(streamInfo.name ?: "video")
 
         val videoStream = run {
@@ -320,8 +320,41 @@ class YouTubeExtractorService {
 
     fun getVideoTitle(url: String): String {
         ensureInitialized()
-        val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, url)
+        val streamInfo = getStreamInfoWithRetry(url)
         return streamInfo.name ?: "video"
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  StreamInfo retry wrapper
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Wraps [StreamInfo.getInfo] with a single retry on DNS failure.
+     * On cold start the system DNS resolver may not be ready yet; waiting
+     * 2 s and retrying is enough to succeed without surfacing the error
+     * to the user.
+     */
+    private fun getStreamInfoWithRetry(url: String): StreamInfo {
+        return try {
+            StreamInfo.getInfo(ServiceList.YouTube, url)
+        } catch (e: Exception) {
+            if (isDnsRelatedFailure(e)) {
+                Log.d(TAG, "DNS failure on first StreamInfo.getInfo attempt — retrying in 2 s…")
+                Thread.sleep(2000)
+                StreamInfo.getInfo(ServiceList.YouTube, url)
+            } else {
+                throw e
+            }
+        }
+    }
+
+    private fun isDnsRelatedFailure(e: Throwable): Boolean {
+        var cause: Throwable? = e
+        while (cause != null) {
+            if (cause is java.net.UnknownHostException) return true
+            cause = cause.cause
+        }
+        return false
     }
 
     fun sanitizeFilename(name: String): String {
