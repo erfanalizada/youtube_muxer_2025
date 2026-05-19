@@ -199,8 +199,11 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                             }
                         ) { progress, status ->
                             mainHandler.post {
+                                // Cap at 0.99 — 1.0 is reserved for the "Download completed"
+                                // event that carries outputPath, preventing the Dart side from
+                                // closing the stream before outputPath is received.
                                 eventSink?.success(mapOf(
-                                    "progress" to progress,
+                                    "progress" to minOf(progress, 0.99),
                                     "status" to status,
                                     "title" to title
                                 ))

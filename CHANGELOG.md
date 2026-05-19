@@ -1,4 +1,8 @@
 
+## 0.4.5
+
+* **Fix: "download completed but no output path returned" race condition** — Audio download progress can legitimately reach 1.0 (last batch of bytes) *before* the "Download completed" event carrying `outputPath` is posted. The Dart generator now breaks only when `outputPath != null` (not on `progress >= 1.0`), and the Kotlin side caps download-phase progress at 0.99 so 1.0 is reserved exclusively for the completion event.
+
 ## 0.4.4
 
 * **Fix: "unable to resolve www.youtube.com" on first download** — The plugin now pre-warms the network immediately on attach (app startup): it initializes NewPipe and resolves `www.youtube.com` in the background so the Android DNS cache is hot by the time the user triggers a download. A single automatic retry (2 s delay) is kept as a safety net for any edge cases where the pre-warm loses a race.

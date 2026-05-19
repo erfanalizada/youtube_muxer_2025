@@ -91,7 +91,10 @@ class YoutubeDownloader {
 
       await for (final progress in progressController.stream) {
         yield progress;
-        if (progress.progress >= 1.0) break;
+        // Only stop when the native side confirms the output path — progress
+        // can legitimately reach 1.0 during the download phase (last batch of
+        // bytes) before the "completed" event (which carries outputPath) fires.
+        if (progress.outputPath != null) break;
       }
     } on PlatformException catch (e) {
       throw Exception('Audio download failed: ${e.message}');
