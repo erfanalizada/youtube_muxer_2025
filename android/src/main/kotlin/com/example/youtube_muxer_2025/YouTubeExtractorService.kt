@@ -52,6 +52,15 @@ class YouTubeExtractorService {
                 initialized = true
             }
         }
+
+        /**
+         * Cache StreamInfo by URL for up to 5 minutes.
+         * YouTube sometimes returns different delivery methods (PROGRESSIVE_HTTP vs
+         * DASH) on separate calls to the same URL — caching ensures getQualities()
+         * and downloadAudio() always see the same set of streams.
+         */
+        private val streamInfoCache = java.util.concurrent.ConcurrentHashMap<String, Pair<StreamInfo, Long>>()
+        private const val STREAM_INFO_CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
     }
 
     // Tuned for maximum parallel throughput
@@ -78,7 +87,7 @@ class YouTubeExtractorService {
     fun getQualities(url: String): List<Map<String, Any>> {
         ensureInitialized()
 
-        val streamInfo = getStreamInfoWithRetry(url)
+        val streamInfo = getStreamInfoCached(url)
 
         // ── Video streams (H.264 MP4 only) ──────────────────────────────
         val videoStreams = streamInfo.videoOnlyStreams
@@ -163,7 +172,7 @@ class YouTubeExtractorService {
     ): String {
         ensureInitialized()
 
-        val streamInfo = getStreamInfoWithRetry(url)
+        val streamInfo = getStreamInfoCached(url)
         onTitleKnown?.invoke(streamInfo.name ?: "video")
 
         val allAudioStreams = streamInfo.audioStreams
@@ -214,7 +223,7 @@ class YouTubeExtractorService {
     ): Pair<String, String> {
         ensureInitialized()
 
-        val streamInfo = getStreamInfoWithRetry(url)
+        val streamInfo = getStreamInfoCached(url)
         onTitleKnown?.invoke(streamInfo.name ?: "video")
 
         val videoStream = run {
@@ -320,26 +329,45 @@ class YouTubeExtractorService {
 
     fun getVideoTitle(url: String): String {
         ensureInitialized()
-        val streamInfo = getStreamInfoWithRetry(url)
+        val streamInfo = getStreamInfoCached(url)
         return streamInfo.name ?: "video"
     }
 
     // ──────────────────────────────────────────────────────────────────
-    //  StreamInfo retry wrapper
+    //  StreamInfo cache + retry wrapper
     // ──────────────────────────────────────────────────────────────────
 
     /**
-     * Wraps [StreamInfo.getInfo] with a single retry on DNS failure.
-     * On cold start the system DNS resolver may not be ready yet; waiting
-     * 2 s and retrying is enough to succeed without surfacing the error
-     * to the user.
+     * Returns [StreamInfo] for [url], serving from cache if the entry is
+     * younger than [STREAM_INFO_CACHE_TTL_MS].  Caching ensures that
+     * getQualities() and downloadAudio()/downloadStreams() always see the
+     * same set of streams even when YouTube returns different delivery
+     * methods (PROGRESSIVE_HTTP vs DASH) on back-to-back calls.
+     */
+    private fun getStreamInfoCached(url: String): StreamInfo {
+        val now = System.currentTimeMillis()
+        val cached = streamInfoCache[url]
+        if (cached != null && (now - cached.second) < STREAM_INFO_CACHE_TTL_MS) {
+            Log.d(TAG, "StreamInfo cache hit for $url")
+            return cached.first
+        }
+        val info = getStreamInfoWithRetry(url)
+        streamInfoCache[url] = Pair(info, System.currentTimeMillis())
+        return info
+    }
+
+    /**
+     * Wraps [StreamInfo.getInfo] with a single retry on any I/O failure.
+     * Transient network errors (DNS not ready, connection reset, timeout)
+     * resolve on their own within a couple of seconds; one retry is enough
+     * to avoid surfacing them to the user.
      */
     private fun getStreamInfoWithRetry(url: String): StreamInfo {
         return try {
             StreamInfo.getInfo(ServiceList.YouTube, url)
         } catch (e: Exception) {
-            if (isDnsRelatedFailure(e)) {
-                Log.d(TAG, "DNS failure on first StreamInfo.getInfo attempt — retrying in 2 s…")
+            if (isTransientNetworkFailure(e)) {
+                Log.d(TAG, "Transient network error on StreamInfo.getInfo — retrying in 2 s… (${e.message})")
                 Thread.sleep(2000)
                 StreamInfo.getInfo(ServiceList.YouTube, url)
             } else {
@@ -348,10 +376,10 @@ class YouTubeExtractorService {
         }
     }
 
-    private fun isDnsRelatedFailure(e: Throwable): Boolean {
+    private fun isTransientNetworkFailure(e: Throwable): Boolean {
         var cause: Throwable? = e
         while (cause != null) {
-            if (cause is java.net.UnknownHostException) return true
+            if (cause is java.io.IOException) return true
             cause = cause.cause
         }
         return false

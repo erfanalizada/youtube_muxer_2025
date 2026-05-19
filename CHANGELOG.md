@@ -1,4 +1,8 @@
 
+## 0.4.6
+
+* **Fix: intermittent "No compatible audio stream found" and "Could not load stream info"** — Added a 5-minute `StreamInfo` cache keyed by URL so `getQualities()` and `downloadAudio()`/`downloadStreams()` always operate on the same set of streams (YouTube sometimes returns different delivery methods on back-to-back calls to the same URL). Also broadened the retry in `getStreamInfoWithRetry` from DNS-only (`UnknownHostException`) to any transient I/O failure (`IOException`), covering connection resets, timeouts, and other transient network errors.
+
 ## 0.4.5
 
 * **Fix: "download completed but no output path returned" race condition** — Audio download progress can legitimately reach 1.0 (last batch of bytes) *before* the "Download completed" event carrying `outputPath` is posted. The Dart generator now breaks only when `outputPath != null` (not on `progress >= 1.0`), and the Kotlin side caps download-phase progress at 0.99 so 1.0 is reserved exclusively for the completion event.
