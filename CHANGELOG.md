@@ -1,4 +1,8 @@
 
+## 0.4.7
+
+* **Fix: frequent "Could not load stream info" errors** — The retry logic in `getStreamInfoWithRetry` now retries on NewPipe `ParsingException` and `ExtractionException` (e.g. YouTube page format changes, incomplete responses) in addition to `IOException`. These errors are the primary cause of the frequent failures because NewPipe's own exceptions are not `IOException` subclasses. Permanent errors (`ContentNotAvailableException`, `ReCaptchaException`) are still rethrown immediately. Retry attempts increased from 1 to 3, with exponential back-off (1 s, then 3 s).
+
 ## 0.4.6
 
 * **Fix: intermittent "No compatible audio stream found" and "Could not load stream info"** — Added a 5-minute `StreamInfo` cache keyed by URL so `getQualities()` and `downloadAudio()`/`downloadStreams()` always operate on the same set of streams (YouTube sometimes returns different delivery methods on back-to-back calls to the same URL). Also broadened the retry in `getStreamInfoWithRetry` from DNS-only (`UnknownHostException`) to any transient I/O failure (`IOException`), covering connection resets, timeouts, and other transient network errors.

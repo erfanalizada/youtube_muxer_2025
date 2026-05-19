@@ -357,29 +357,57 @@ class YouTubeExtractorService {
     }
 
     /**
-     * Wraps [StreamInfo.getInfo] with a single retry on any I/O failure.
-     * Transient network errors (DNS not ready, connection reset, timeout)
-     * resolve on their own within a couple of seconds; one retry is enough
-     * to avoid surfacing them to the user.
+     * Wraps [StreamInfo.getInfo] with up to 3 attempts on transient failures.
+     * Delays: 1 s after attempt 1, 3 s after attempt 2 (exponential back-off).
+     * Permanent errors (geo-block, age-restriction, private/deleted video,
+     * captcha) are rethrown immediately without consuming any retry budget.
      */
     private fun getStreamInfoWithRetry(url: String): StreamInfo {
-        return try {
-            StreamInfo.getInfo(ServiceList.YouTube, url)
-        } catch (e: Exception) {
-            if (isTransientNetworkFailure(e)) {
-                Log.d(TAG, "Transient network error on StreamInfo.getInfo — retrying in 2 s… (${e.message})")
-                Thread.sleep(2000)
-                StreamInfo.getInfo(ServiceList.YouTube, url)
-            } else {
-                throw e
+        val delays = longArrayOf(1_000, 3_000)
+        var lastException: Exception? = null
+        for (attempt in 0..delays.size) {
+            try {
+                return StreamInfo.getInfo(ServiceList.YouTube, url)
+            } catch (e: Exception) {
+                if (!isTransientFailure(e)) throw e
+                lastException = e
+                if (attempt < delays.size) {
+                    Log.w(TAG, "Transient failure on attempt ${attempt + 1} — retrying in ${delays[attempt]} ms… (${e.javaClass.simpleName}: ${e.message})")
+                    Thread.sleep(delays[attempt])
+                }
             }
         }
+        throw lastException!!
     }
 
-    private fun isTransientNetworkFailure(e: Throwable): Boolean {
+    /**
+     * Returns true when [e] represents a failure worth retrying.
+     *
+     * Permanent errors ([ContentNotAvailableException], [ReCaptchaException])
+     * are detected first so they are never retried even if they happen to wrap
+     * an [IOException] deeper in the cause chain.
+     *
+     * Transient classes:
+     *  - [java.io.IOException] — network/timeout/DNS failures
+     *  - [org.schabi.newpipe.extractor.exceptions.ParsingException] — YouTube
+     *    page format changed or incomplete response; often succeeds on retry
+     *  - [org.schabi.newpipe.extractor.exceptions.ExtractionException] — broader
+     *    NewPipe extraction hiccups that are not permanent content errors
+     */
+    private fun isTransientFailure(e: Throwable): Boolean {
+        // Walk the cause chain once for permanent errors — if found, do NOT retry
         var cause: Throwable? = e
         while (cause != null) {
+            if (cause is org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException) return false
+            if (cause is org.schabi.newpipe.extractor.exceptions.ReCaptchaException) return false
+            cause = cause.cause
+        }
+        // Walk again for transient classes that ARE worth retrying
+        cause = e
+        while (cause != null) {
             if (cause is java.io.IOException) return true
+            if (cause is org.schabi.newpipe.extractor.exceptions.ParsingException) return true
+            if (cause is org.schabi.newpipe.extractor.exceptions.ExtractionException) return true
             cause = cause.cause
         }
         return false
