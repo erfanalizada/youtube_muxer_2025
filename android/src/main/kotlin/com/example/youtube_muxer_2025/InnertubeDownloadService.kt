@@ -51,6 +51,12 @@ class InnertubeDownloadService {
         private const val TV_CLIENT_ID = "7"
         private const val TV_UA = "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1"
 
+        // IOS — returns direct URLs, no JS player required; different stream set
+        private const val IOS_CLIENT_NAME = "IOS"
+        private const val IOS_CLIENT_VERSION = "21.02.3"
+        private const val IOS_CLIENT_ID = "5"
+        private const val IOS_UA = "com.google.ios.youtube/$IOS_CLIENT_VERSION (iPhone16,2; U; CPU iOS 18_2_1 like Mac OS X;)"
+
         private const val BUFFER_SIZE = 512 * 1024       // 512 KB per thread
         private const val MIN_CHUNK_SIZE = 1L * 1024 * 1024  // 1 MB threshold for chunked
         private const val PROGRESS_INTERVAL_MS = 150L
@@ -133,19 +139,23 @@ class InnertubeDownloadService {
     fun getStreamBundle(url: String): StreamBundle {
         val id = extractVideoId(url) ?: throw Exception("Cannot extract video ID from URL")
 
-        val androidBundle = try { fetchPlayerResponse(id, useAndroid = true) } catch (e: Exception) {
-            Log.w(TAG, "ANDROID client failed: ${e.message}")
-            null
+        // Try three clients in order: ANDROID → TVHTML5 → IOS
+        for (clientType in listOf("ANDROID", "TV", "IOS")) {
+            val bundle = try {
+                fetchPlayerResponse(id, clientType).also {
+                    if (it.audioStreams.isNotEmpty() || it.videoStreams.isNotEmpty()) {
+                        Log.d(TAG, "$clientType client: ${it.audioStreams.size} audio, ${it.videoStreams.size} video direct-URL streams")
+                        return it
+                    }
+                    Log.w(TAG, "$clientType client: response OK but no direct-URL streams")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "$clientType client failed: ${e.message}")
+                null
+            }
+            if (bundle == null) continue
         }
-
-        if (androidBundle != null &&
-            (androidBundle.audioStreams.isNotEmpty() || androidBundle.videoStreams.isNotEmpty())) {
-            Log.d(TAG, "ANDROID client: ${androidBundle.audioStreams.size} audio, ${androidBundle.videoStreams.size} video streams")
-            return androidBundle
-        }
-
-        Log.w(TAG, "ANDROID client returned no direct-URL streams — trying TVHTML5")
-        return fetchPlayerResponse(id, useAndroid = false)
+        throw Exception("All Innertube clients returned no direct-URL streams (video may require poToken)")
     }
 
     /**
@@ -344,11 +354,12 @@ class InnertubeDownloadService {
 
     // ── Innertube fetch ──────────────────────────────────────────────────────
 
-    private fun fetchPlayerResponse(videoId: String, useAndroid: Boolean): StreamBundle {
-        val clientName = if (useAndroid) ANDROID_CLIENT_NAME else TV_CLIENT_NAME
-        val clientVersion = if (useAndroid) ANDROID_CLIENT_VERSION else TV_CLIENT_VERSION
-        val clientId = if (useAndroid) ANDROID_CLIENT_ID else TV_CLIENT_ID
-        val userAgent = if (useAndroid) ANDROID_UA else TV_UA
+    private fun fetchPlayerResponse(videoId: String, clientType: String): StreamBundle {
+        val (clientName, clientVersion, clientId, userAgent) = when (clientType) {
+            "TV"  -> arrayOf(TV_CLIENT_NAME, TV_CLIENT_VERSION, TV_CLIENT_ID, TV_UA)
+            "IOS" -> arrayOf(IOS_CLIENT_NAME, IOS_CLIENT_VERSION, IOS_CLIENT_ID, IOS_UA)
+            else  -> arrayOf(ANDROID_CLIENT_NAME, ANDROID_CLIENT_VERSION, ANDROID_CLIENT_ID, ANDROID_UA)
+        }
 
         val clientContext = JSONObject().apply {
             put("clientName", clientName)
@@ -356,19 +367,27 @@ class InnertubeDownloadService {
             put("hl", "en")
             put("gl", "US")
             put("timeZone", "UTC")
-            if (useAndroid) {
-                put("androidSdkVersion", ANDROID_SDK)
-                put("osName", "Android")
-                put("osVersion", "11")
-                put("platform", "MOBILE")
-                put("userAgent", userAgent)
+            when (clientType) {
+                "ANDROID" -> {
+                    put("androidSdkVersion", ANDROID_SDK)
+                    put("osName", "Android")
+                    put("osVersion", "11")
+                    put("platform", "MOBILE")
+                    put("userAgent", userAgent)
+                }
+                "IOS" -> {
+                    put("osName", "iPhone")
+                    put("osVersion", "18.2.1")
+                    put("deviceModel", "iPhone16,2")
+                    put("platform", "MOBILE")
+                }
             }
         }
 
         val body = JSONObject().apply {
             put("context", JSONObject().apply { put("client", clientContext) })
             put("videoId", videoId)
-            if (useAndroid) {
+            if (clientType == "ANDROID") {
                 put("playbackContext", JSONObject().apply {
                     put("contentPlaybackContext", JSONObject().apply {
                         put("html5Preference", "HTML5_PREF_WANTS")

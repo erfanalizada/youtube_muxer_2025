@@ -89,6 +89,12 @@ class YouTubeExtractorService {
 
         val streamInfo = getStreamInfoCached(url)
 
+        // ── Diagnostic logging ───────────────────────────────────────────────────
+        Log.d(TAG, "getQualities: audioStreams=${streamInfo.audioStreams.size} videoOnlyStreams=${streamInfo.videoOnlyStreams.size}")
+        for ((i, s) in streamInfo.audioStreams.take(3).withIndex()) {
+            Log.d(TAG, "  audio[$i] delivery=${s.deliveryMethod} mime=${s.format?.mimeType} content=${s.content?.take(60)}")
+        }
+
         // ── Video streams (H.264 MP4 only — delivery method not filtered) ──────
         val videoStreams = streamInfo.videoOnlyStreams
             .filter { stream ->
