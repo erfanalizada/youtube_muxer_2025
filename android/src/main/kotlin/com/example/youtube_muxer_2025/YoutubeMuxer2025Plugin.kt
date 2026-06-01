@@ -18,6 +18,7 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
     private lateinit var context: Context
     private var eventSink: EventChannel.EventSink? = null
     private val executor = Executors.newSingleThreadExecutor()
+    private val innertubeService = InnertubeDownloadService()
     private val extractorService = YouTubeExtractorService()
 
     companion object {
@@ -76,16 +77,21 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                 }
 
                 executor.execute {
+                    val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
                     try {
-                        val qualities = extractorService.getQualities(url)
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            result.success(qualities)
+                        // Try Innertube (direct API, no cipher) first
+                        val qualities = try {
+                            val q = innertubeService.getQualities(url)
+                            Log.d(TAG, "getQualities: Innertube succeeded")
+                            q
+                        } catch (e: Exception) {
+                            Log.w(TAG, "getQualities: Innertube failed (${e.message}), falling back to NewPipe")
+                            extractorService.getQualities(url)
                         }
+                        mainHandler.post { result.success(qualities) }
                     } catch (e: Exception) {
                         Log.e(TAG, "getQualities failed", e)
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            result.error("EXTRACTION_ERROR", e.message ?: "Unknown error", null)
-                        }
+                        mainHandler.post { result.error("EXTRACTION_ERROR", e.message ?: "Unknown error", null) }
                     }
                 }
             }
@@ -106,25 +112,34 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                         val documentsDir = File(context.filesDir, "downloads")
                         documentsDir.mkdirs()
 
-                        // Title and output path are resolved inside downloadStreams via onTitleKnown,
-                        // which fires synchronously after StreamInfo.getInfo() but before downloads start.
                         var title = "video"
                         var outputPath = "${documentsDir.absolutePath}/video.mp4"
 
-                        val (tempVideoPath, tempAudioPath) = extractorService.downloadStreams(
-                            url, quality, tempDir,
-                            onTitleKnown = { t ->
-                                title = t
-                                outputPath = "${documentsDir.absolutePath}/${extractorService.sanitizeFilename(t)}.mp4"
-                            }
-                        ) { progress, status ->
+                        val sendProgress = { progress: Double, status: String ->
                             mainHandler.post {
-                                eventSink?.success(mapOf(
-                                    "progress" to progress,
-                                    "status" to status,
-                                    "title" to title
-                                ))
+                                eventSink?.success(mapOf("progress" to progress, "status" to status, "title" to title))
                             }
+                        }
+
+                        // Try Innertube first, fall back to NewPipe
+                        val (tempVideoPath, tempAudioPath) = try {
+                            innertubeService.downloadStreams(url, quality, tempDir,
+                                onTitleKnown = { t ->
+                                    title = t
+                                    outputPath = "${documentsDir.absolutePath}/${innertubeService.sanitizeFilename(t)}.mp4"
+                                },
+                                progressCallback = sendProgress
+                            ).also { Log.d(TAG, "downloadVideo: Innertube succeeded") }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "downloadVideo: Innertube failed (${e.message}), falling back to NewPipe")
+                            title = "video"; outputPath = "${documentsDir.absolutePath}/video.mp4"
+                            extractorService.downloadStreams(url, quality, tempDir,
+                                onTitleKnown = { t ->
+                                    title = t
+                                    outputPath = "${documentsDir.absolutePath}/${extractorService.sanitizeFilename(t)}.mp4"
+                                },
+                                progressCallback = sendProgress
+                            )
                         }
 
                         // Mux (85% - 100%)
@@ -190,24 +205,36 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                         var title = "video"
                         var outputPath = "${outputDir.absolutePath}/audio.m4a"
 
-                        val tempAudioPath = extractorService.downloadAudio(
-                            url, tempDir,
-                            onTitleKnown = { t ->
-                                title = t
-                                // Extension resolved after download (webm fallback); placeholder for now
-                                outputPath = "${outputDir.absolutePath}/${extractorService.sanitizeFilename(t)}.m4a"
-                            }
-                        ) { progress, status ->
+                        val sendProgress = { progress: Double, status: String ->
                             mainHandler.post {
-                                // Cap at 0.99 — 1.0 is reserved for the "Download completed"
-                                // event that carries outputPath, preventing the Dart side from
-                                // closing the stream before outputPath is received.
+                                // Cap at 0.99 — 1.0 is reserved for the "Download completed" event
                                 eventSink?.success(mapOf(
                                     "progress" to minOf(progress, 0.99),
                                     "status" to status,
                                     "title" to title
                                 ))
                             }
+                        }
+
+                        // Try Innertube first, fall back to NewPipe
+                        val tempAudioPath = try {
+                            innertubeService.downloadAudio(url, tempDir,
+                                onTitleKnown = { t ->
+                                    title = t
+                                    outputPath = "${outputDir.absolutePath}/${innertubeService.sanitizeFilename(t)}.m4a"
+                                },
+                                progressCallback = sendProgress
+                            ).also { Log.d(TAG, "downloadAudio: Innertube succeeded") }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "downloadAudio: Innertube failed (${e.message}), falling back to NewPipe")
+                            title = "video"; outputPath = "${outputDir.absolutePath}/audio.m4a"
+                            extractorService.downloadAudio(url, tempDir,
+                                onTitleKnown = { t ->
+                                    title = t
+                                    outputPath = "${outputDir.absolutePath}/${extractorService.sanitizeFilename(t)}.m4a"
+                                },
+                                progressCallback = sendProgress
+                            )
                         }
 
                         // Use the actual extension from the downloaded temp file (m4a or webm)

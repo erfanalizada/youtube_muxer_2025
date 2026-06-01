@@ -99,13 +99,15 @@ class YouTubeExtractorService {
                  stream.codec?.contains("h264", ignoreCase = true) == true)
             }
 
-        // ── Audio streams (MP4/M4A) ──────────────────────────────────────
-        val audioStreams = streamInfo.audioStreams
+        // ── Audio streams — prefer MP4/AAC, fall back to any progressive format ──
+        val allAudio = streamInfo.audioStreams
             .filter { stream ->
                 stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-                stream.format != null &&
-                stream.format!!.mimeType.contains("audio/mp4")
+                stream.format != null
             }
+        val audioStreams = allAudio
+            .filter { it.format!!.mimeType.contains("audio/mp4") }
+            .ifEmpty { allAudio }
 
         if (audioStreams.isEmpty()) {
             throw Exception("No compatible audio stream found for this video")
@@ -249,17 +251,20 @@ class YouTubeExtractorService {
                 .minByOrNull { it.second }?.first
         } ?: throw Exception("No video stream available (requested: '$qualityLabel')")
 
-        val audioStream = streamInfo.audioStreams
+        val allProgressiveAudio = streamInfo.audioStreams
             .filter { stream ->
                 stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-                stream.format != null &&
-                stream.format!!.mimeType.contains("audio/mp4")
+                stream.format != null
             }
+        val audioStream = allProgressiveAudio
+            .filter { it.format!!.mimeType.contains("audio/mp4") }
             .maxByOrNull { it.averageBitrate }
+            ?: allProgressiveAudio.maxByOrNull { it.averageBitrate }
             ?: throw Exception("No compatible audio stream found")
 
         val tempVideoPath = "$tempDir/temp_video.mp4"
-        val tempAudioPath = "$tempDir/temp_audio.m4a"
+        val audioExt = if (audioStream.format!!.mimeType.contains("audio/mp4")) "m4a" else "webm"
+        val tempAudioPath = "$tempDir/temp_audio.$audioExt"
 
         val videoSize = videoStream.itagItem?.contentLength ?: -1L
         val audioSize = audioStream.itagItem?.contentLength ?: -1L
