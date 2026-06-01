@@ -89,22 +89,19 @@ class YouTubeExtractorService {
 
         val streamInfo = getStreamInfoCached(url)
 
-        // ── Video streams (H.264 MP4 only) ──────────────────────────────
+        // ── Video streams (H.264 MP4 only — delivery method not filtered) ──────
         val videoStreams = streamInfo.videoOnlyStreams
             .filter { stream ->
-                stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
                 stream.format != null &&
+                !stream.content.isNullOrEmpty() &&
                 stream.format!!.mimeType.contains("video/mp4") &&
                 (stream.codec?.contains("avc", ignoreCase = true) == true ||
                  stream.codec?.contains("h264", ignoreCase = true) == true)
             }
 
-        // ── Audio streams — prefer MP4/AAC, fall back to any progressive format ──
+        // ── Audio streams — prefer MP4/AAC, accept any format/delivery ─────────
         val allAudio = streamInfo.audioStreams
-            .filter { stream ->
-                stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-                stream.format != null
-            }
+            .filter { stream -> stream.format != null && !stream.content.isNullOrEmpty() }
         val audioStreams = allAudio
             .filter { it.format!!.mimeType.contains("audio/mp4") }
             .ifEmpty { allAudio }
@@ -178,11 +175,7 @@ class YouTubeExtractorService {
         onTitleKnown?.invoke(streamInfo.name ?: "video")
 
         val allAudioStreams = streamInfo.audioStreams
-            .filter { stream ->
-                stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-                stream.format != null
-            }
-        // Prefer AAC/MP4 for maximum compatibility; fall back to any progressive stream
+            .filter { stream -> stream.format != null && !stream.content.isNullOrEmpty() }
         val audioStream = allAudioStreams
             .filter { it.format!!.mimeType.contains("audio/mp4") }
             .maxByOrNull { it.averageBitrate }
@@ -197,8 +190,9 @@ class YouTubeExtractorService {
         val audioSize = audioStream.itagItem?.contentLength ?: -1L
         val tempAudioPath = "$tempDir/temp_audio_dl.$audioExt"
         val lastProgressTime = AtomicLong(0)
+        val resolvedAudioUrl = resolveStreamUrl(audioStream.content!!)
 
-        downloadFileChunked(audioStream.content, tempAudioPath, audioSize) { downloaded, total ->
+        downloadFileChunked(resolvedAudioUrl, tempAudioPath, audioSize) { downloaded, total ->
             val now = System.currentTimeMillis()
             if (now - lastProgressTime.get() >= PROGRESS_INTERVAL_MS) {
                 lastProgressTime.set(now)
@@ -231,8 +225,8 @@ class YouTubeExtractorService {
         val videoStream = run {
             val candidates = streamInfo.videoOnlyStreams
                 .filter { stream ->
-                    stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
                     stream.format != null &&
+                    !stream.content.isNullOrEmpty() &&
                     stream.format!!.mimeType.contains("video/mp4")
                 }
             val targetRes = Regex("\\d+").find(qualityLabel)?.value?.toIntOrNull()
@@ -251,15 +245,12 @@ class YouTubeExtractorService {
                 .minByOrNull { it.second }?.first
         } ?: throw Exception("No video stream available (requested: '$qualityLabel')")
 
-        val allProgressiveAudio = streamInfo.audioStreams
-            .filter { stream ->
-                stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-                stream.format != null
-            }
-        val audioStream = allProgressiveAudio
+        val allAudio = streamInfo.audioStreams
+            .filter { stream -> stream.format != null && !stream.content.isNullOrEmpty() }
+        val audioStream = allAudio
             .filter { it.format!!.mimeType.contains("audio/mp4") }
             .maxByOrNull { it.averageBitrate }
-            ?: allProgressiveAudio.maxByOrNull { it.averageBitrate }
+            ?: allAudio.maxByOrNull { it.averageBitrate }
             ?: throw Exception("No compatible audio stream found")
 
         val tempVideoPath = "$tempDir/temp_video.mp4"
@@ -296,9 +287,12 @@ class YouTubeExtractorService {
         val videoError = AtomicReference<Exception?>(null)
         val audioError = AtomicReference<Exception?>(null)
 
+        val resolvedVideoUrl = resolveStreamUrl(videoStream.content!!)
+        val resolvedAudioUrl = resolveStreamUrl(audioStream.content!!)
+
         Thread({
             try {
-                downloadFileChunked(videoStream.content, tempVideoPath, videoSize) { bytes, total ->
+                downloadFileChunked(resolvedVideoUrl, tempVideoPath, videoSize) { bytes, total ->
                     videoDownloaded.set(bytes)
                     if (total > 0) videoTotal.set(total)
                     reportProgress()
@@ -312,7 +306,7 @@ class YouTubeExtractorService {
 
         Thread({
             try {
-                downloadFileChunked(audioStream.content, tempAudioPath, audioSize) { bytes, total ->
+                downloadFileChunked(resolvedAudioUrl, tempAudioPath, audioSize) { bytes, total ->
                     audioDownloaded.set(bytes)
                     if (total > 0) audioTotal.set(total)
                     reportProgress()
@@ -416,6 +410,48 @@ class YouTubeExtractorService {
             cause = cause.cause
         }
         return false
+    }
+
+    /**
+     * Resolves [contentUrl] to a directly-downloadable media URL.
+     *
+     * NewPipe may return stream URLs as DASH delivery where [contentUrl] is a
+     * DASH manifest (MPD). In that case, this method fetches the manifest and
+     * extracts the highest-bitrate audio/video BaseURL from it.
+     *
+     * For direct stream URLs (regular googlevideo.com URLs), it returns [contentUrl] unchanged.
+     */
+    fun resolveStreamUrl(contentUrl: String): String {
+        // Direct stream URLs contain "videoplayback" or are standard CDN URLs
+        // DASH manifest URLs contain "manifest.googlevideo.com" or "/api/manifest/"
+        if (!contentUrl.contains("manifest.googlevideo.com") &&
+            !contentUrl.contains("/api/manifest/") &&
+            !contentUrl.contains("googlevideo.com/api/manifest")) {
+            return contentUrl
+        }
+
+        Log.d(TAG, "Resolving DASH manifest URL")
+        val resp = httpClient.newCall(Request.Builder().url(contentUrl).build()).execute()
+        if (!resp.isSuccessful) throw Exception("DASH manifest fetch failed: HTTP ${resp.code}")
+        val mpd = resp.body!!.string().replace("&amp;", "&")
+
+        // Collect all (bandwidth, baseUrl) pairs from all Representations
+        val found = mutableListOf<Pair<Int, String>>()
+        val baseUrlRegex = Regex("""<BaseURL>([^<]+)</BaseURL>""")
+        val bandwidthRegex = Regex("""bandwidth="(\d+)"""")
+
+        // Split by Representation blocks to associate bandwidth with BaseURL
+        val repSections = mpd.split("<Representation").drop(1)
+        for (section in repSections) {
+            val bw = bandwidthRegex.find(section)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val url = baseUrlRegex.find(section)?.groupValues?.get(1)?.trim() ?: continue
+            if (url.startsWith("http")) found.add(Pair(bw, url))
+        }
+
+        // Prefer highest bitrate; fall back to simple first BaseURL in the whole doc
+        return found.maxByOrNull { it.first }?.second
+            ?: baseUrlRegex.find(mpd)?.groupValues?.get(1)?.trim()?.takeIf { it.startsWith("http") }
+            ?: throw Exception("No BaseURL found in DASH manifest")
     }
 
     fun sanitizeFilename(name: String): String {

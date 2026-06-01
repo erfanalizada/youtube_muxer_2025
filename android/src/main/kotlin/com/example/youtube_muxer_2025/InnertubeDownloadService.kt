@@ -33,17 +33,23 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class InnertubeDownloadService {
 
-    // ── Innertube client config (ANDROID — no JS player required) ────────────
+    // ── Innertube client configs ──────────────────────────────────────────────
     companion object {
         private const val TAG = "InnertubeDownloadService"
-        private const val CLIENT_NAME = "ANDROID"
-        private const val CLIENT_VERSION = "21.02.35"
-        private const val CLIENT_ID_HEADER = "3"
-        private const val ANDROID_SDK = 30
-
         private const val PLAYER_ENDPOINT = "https://www.youtube.com/youtubei/v1/player"
-        private const val USER_AGENT =
-            "com.google.android.youtube/$CLIENT_VERSION (Linux; U; Android 11) gzip"
+
+        // ANDROID — no JS player / cipher required; may need poToken for some videos
+        private const val ANDROID_CLIENT_NAME = "ANDROID"
+        private const val ANDROID_CLIENT_VERSION = "21.02.35"
+        private const val ANDROID_CLIENT_ID = "3"
+        private const val ANDROID_SDK = 30
+        private val ANDROID_UA = "com.google.android.youtube/$ANDROID_CLIENT_VERSION (Linux; U; Android 11) gzip"
+
+        // TVHTML5 — TV client; no defined poToken policy, often works without it
+        private const val TV_CLIENT_NAME = "TVHTML5"
+        private const val TV_CLIENT_VERSION = "7.20260114.12.00"
+        private const val TV_CLIENT_ID = "7"
+        private const val TV_UA = "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1"
 
         private const val BUFFER_SIZE = 512 * 1024       // 512 KB per thread
         private const val MIN_CHUNK_SIZE = 1L * 1024 * 1024  // 1 MB threshold for chunked
@@ -119,10 +125,27 @@ class InnertubeDownloadService {
         return null
     }
 
-    /** Fetches stream info via the Innertube ANDROID player endpoint. */
+    /**
+     * Fetches stream info via Innertube.
+     * Tries ANDROID client first (no cipher needed); if it returns no direct-URL streams,
+     * retries with TVHTML5 (TV client, no strict poToken policy).
+     */
     fun getStreamBundle(url: String): StreamBundle {
         val id = extractVideoId(url) ?: throw Exception("Cannot extract video ID from URL")
-        return fetchPlayerResponse(id)
+
+        val androidBundle = try { fetchPlayerResponse(id, useAndroid = true) } catch (e: Exception) {
+            Log.w(TAG, "ANDROID client failed: ${e.message}")
+            null
+        }
+
+        if (androidBundle != null &&
+            (androidBundle.audioStreams.isNotEmpty() || androidBundle.videoStreams.isNotEmpty())) {
+            Log.d(TAG, "ANDROID client: ${androidBundle.audioStreams.size} audio, ${androidBundle.videoStreams.size} video streams")
+            return androidBundle
+        }
+
+        Log.w(TAG, "ANDROID client returned no direct-URL streams — trying TVHTML5")
+        return fetchPlayerResponse(id, useAndroid = false)
     }
 
     /**
@@ -321,36 +344,45 @@ class InnertubeDownloadService {
 
     // ── Innertube fetch ──────────────────────────────────────────────────────
 
-    private fun fetchPlayerResponse(videoId: String): StreamBundle {
+    private fun fetchPlayerResponse(videoId: String, useAndroid: Boolean): StreamBundle {
+        val clientName = if (useAndroid) ANDROID_CLIENT_NAME else TV_CLIENT_NAME
+        val clientVersion = if (useAndroid) ANDROID_CLIENT_VERSION else TV_CLIENT_VERSION
+        val clientId = if (useAndroid) ANDROID_CLIENT_ID else TV_CLIENT_ID
+        val userAgent = if (useAndroid) ANDROID_UA else TV_UA
+
+        val clientContext = JSONObject().apply {
+            put("clientName", clientName)
+            put("clientVersion", clientVersion)
+            put("hl", "en")
+            put("gl", "US")
+            put("timeZone", "UTC")
+            if (useAndroid) {
+                put("androidSdkVersion", ANDROID_SDK)
+                put("osName", "Android")
+                put("osVersion", "11")
+                put("platform", "MOBILE")
+                put("userAgent", userAgent)
+            }
+        }
+
         val body = JSONObject().apply {
-            put("context", JSONObject().apply {
-                put("client", JSONObject().apply {
-                    put("clientName", CLIENT_NAME)
-                    put("clientVersion", CLIENT_VERSION)
-                    put("androidSdkVersion", ANDROID_SDK)
-                    put("osName", "Android")
-                    put("osVersion", "11")
-                    put("platform", "MOBILE")
-                    put("hl", "en")
-                    put("gl", "US")
-                    put("timeZone", "UTC")
-                    put("userAgent", USER_AGENT)
-                })
-            })
+            put("context", JSONObject().apply { put("client", clientContext) })
             put("videoId", videoId)
-            put("playbackContext", JSONObject().apply {
-                put("contentPlaybackContext", JSONObject().apply {
-                    put("html5Preference", "HTML5_PREF_WANTS")
+            if (useAndroid) {
+                put("playbackContext", JSONObject().apply {
+                    put("contentPlaybackContext", JSONObject().apply {
+                        put("html5Preference", "HTML5_PREF_WANTS")
+                    })
                 })
-            })
+            }
         }.toString()
 
         val req = Request.Builder()
             .url(PLAYER_ENDPOINT)
             .post(body.toRequestBody("application/json".toMediaType()))
-            .header("User-Agent", USER_AGENT)
-            .header("X-Youtube-Client-Name", CLIENT_ID_HEADER)
-            .header("X-Youtube-Client-Version", CLIENT_VERSION)
+            .header("User-Agent", userAgent)
+            .header("X-Youtube-Client-Name", clientId)
+            .header("X-Youtube-Client-Version", clientVersion)
             .header("Content-Type", "application/json")
             .header("Origin", "https://www.youtube.com")
             .header("Accept-Language", "en-US,en;q=0.9")
