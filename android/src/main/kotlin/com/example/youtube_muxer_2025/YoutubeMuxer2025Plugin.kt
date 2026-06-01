@@ -115,7 +115,7 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                         var title = "video"
                         var outputPath = "${documentsDir.absolutePath}/video.mp4"
 
-                        val sendProgress = { progress: Double, status: String ->
+                        val sendProgress: (Double, String) -> Unit = { progress, status ->
                             mainHandler.post {
                                 eventSink?.success(mapOf("progress" to progress, "status" to status, "title" to title))
                             }
@@ -205,7 +205,7 @@ class YoutubeMuxer2025Plugin : FlutterPlugin, MethodCallHandler {
                         var title = "video"
                         var outputPath = "${outputDir.absolutePath}/audio.m4a"
 
-                        val sendProgress = { progress: Double, status: String ->
+                        val sendProgress: (Double, String) -> Unit = { progress, status ->
                             mainHandler.post {
                                 // Cap at 0.99 — 1.0 is reserved for the "Download completed" event
                                 eventSink?.success(mapOf(
